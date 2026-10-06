@@ -20,6 +20,7 @@ Run these from PowerShell or the PlatformIO terminal in VS Code. The pioarduino 
 | `lib/leafcodec` | `0x1D4` decode, `0x1DA` and `0x55A` encode, Nissan CRC. Plain C++. |
 | `lib/simcore` | `0x1D4` latch with the 100 ms receive timeout, tick timing statistics. Plain C++. |
 | `lib/simproto` | Console line reader and tokeniser. Plain C++. |
+| `lib/plant` | Single-inertia motor model: torque envelope, torque lag, friction, standstill hold. Plain C++. |
 | `src/` | ESP32 code: TWAI driver, 10 ms simulation task, serial console. |
 | `test/` | Unity tests for `lib/`, run with `pio test -e native`. |
 | `tools/dbc/leaf_sim.dbc` | DBC for SavvyCAN. |
@@ -30,4 +31,5 @@ Run these from PowerShell or the PlatformIO terminal in VS Code. The pioarduino 
 | Milestone | State |
 | --- | --- |
 | M1 Skeleton, `leafcodec`, native tests | Done |
-| M2 CAN bring-up | Built. Bench test: [docs/bench/M2_can_bringup.md](docs/bench/M2_can_bringup.md) |
+| M2 CAN bring-up | Built, awaiting bench test: [docs/bench/M2_can_bringup.md](docs/bench/M2_can_bringup.md) |
+| M3 Plant with base friction, closed loop | Built, awaiting bench test: [docs/bench/M3_closed_loop.md](docs/bench/M3_closed_loop.md) |

@@ -51,6 +51,16 @@ constexpr float K_T_DEFAULT = 0.25f;
 // Off until confirmed from a tractor capture.
 #define SIM_REPORT_TORQUE 0
 
+// Plant (plan section 6). Placeholders until the identification runs.
+constexpr float J_DEFAULT_KGM2   = 0.30f;  // no-load acceleration run
+constexpr float TC_DEFAULT_NM    = 5.0f;   // coast-down
+constexpr float B_DEFAULT_NMS    = 0.02f;  // coast-down, Nm·s/rad
+constexpr float C_DEFAULT_NMS2   = 0.0f;   // coast-down, Nm·s²/rad²
+constexpr float TAU_DEFAULT_MS   = 30.0f;  // request against reported torque in logs
+// VERIFY (plan section 12, V2): motor type on the tractor.
+constexpr float TMAX_DEFAULT_NM  = 280.0f;
+constexpr float PMAX_DEFAULT_KW  = 80.0f;
+
 constexpr float UDC_DEFAULT_V        = 360.0f; // tractor pack nominal
 constexpr float MOTOR_TEMP_DEFAULT_C = 40.0f;
 constexpr float INV_TEMP_DEFAULT_C   = 40.0f;

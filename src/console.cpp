@@ -19,18 +19,29 @@ static const char *twai_state_name(uint8_t s) {
 }
 
 static void cmd_help() {
-    Serial.println("ok commands: help, stat");
+    Serial.println("ok commands: help, stat, params");
+}
+
+static void cmd_params() {
+    SimSnapshot s = sim_get_snapshot();
+    const SimParams &p = s.params;
+    Serial.printf("ok J=%.3f Tc=%.2f b=%.4f c=%.6f tau=%.1f Tmax=%.1f Pmax=%.1f kT=%.3f"
+                  " udc=%.0f motor_c=%.0f inv_c=%.0f fault=%d\n",
+                  p.plant.j_kgm2, p.plant.tc_nm, p.plant.b_nms, p.plant.c_nms2,
+                  p.plant.tau_ms, p.plant.tmax_nm, p.plant.pmax_kw, p.k_t, p.udc_v,
+                  p.motor_c, p.inv_c, p.inv_fault ? 1 : 0);
 }
 
 static void cmd_stat() {
     SimSnapshot s = sim_get_snapshot();
     CanStats c = can_get_stats();
     const simcore::TickStats &t = s.stats;
-    float req_nm = s.cmd.raw * s.params.k_t;
 
-    Serial.printf("ok t_ms=%lu rpm=%.1f req_raw=%d req_nm=%.2f hv=%u rx_timeout=%d udc=%.0f",
-                  (unsigned long)s.sim_ms, s.rpm, s.cmd.raw, req_nm,
-                  s.cmd.hv_status, s.cmd_fresh ? 0 : 1, s.params.udc_v);
+    Serial.printf("ok t_ms=%lu rpm=%.1f req_raw=%d t_req=%.2f t_motor=%.2f t_load=%.2f"
+                  " clip=%d hv=%u rx_timeout=%d udc=%.0f",
+                  (unsigned long)s.sim_ms, s.rpm, s.cmd.raw, s.t_req_nm, s.t_motor_nm,
+                  s.t_load_nm, s.clipping ? 1 : 0, s.cmd.hv_status,
+                  s.cmd_fresh ? 0 : 1, s.params.udc_v);
     Serial.printf(" ticks=%lu period_us=%lu jitter_1s_us=%lu jitter_max_us=%lu"
                   " overruns=%lu out_of_tol=%lu",
                   (unsigned long)t.ticks(), (unsigned long)t.last_period_us(),
@@ -56,6 +67,7 @@ static void handle_line(char *line) {
     if (argc == 0) return;
     if (strcmp(argv[0], "help") == 0) cmd_help();
     else if (strcmp(argv[0], "stat") == 0) cmd_stat();
+    else if (strcmp(argv[0], "params") == 0) cmd_params();
     else Serial.printf("err unknown command '%s', try help\n", argv[0]);
 }
 
