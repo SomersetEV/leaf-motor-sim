@@ -1,0 +1,74 @@
+VERSION ""
+
+
+NS_ :
+	NS_DESC_
+	CM_
+	BA_DEF_
+	BA_
+	VAL_
+	CAT_DEF_
+	CAT_
+	FILTER
+	BA_DEF_DEF_
+	EV_DATA_
+	ENVVAR_DATA_
+	SGTYPE_
+	SGTYPE_VAL_
+	BA_DEF_SGTYPE_
+	BA_SGTYPE_
+	SIG_TYPE_REF_
+	VAL_TABLE_
+	SIG_GROUP_
+	SIG_VALTYPE_
+	SIGTYPE_VALTYPE_
+	BO_TX_BU_
+	BU_SG_REL_
+	SG_MUL_VAL_
+
+BS_:
+
+BU_: ZOMBIE LEAFSIM
+
+
+BO_ 282 VCM_11A: 8 ZOMBIE
+ SG_ Gear : 0|8@1+ (1,0) [0|255] "" LEAFSIM
+ SG_ OnOff : 8|8@1+ (1,0) [0|255] "" LEAFSIM
+ SG_ Counter : 48|2@1+ (1,0) [0|3] "" LEAFSIM
+ SG_ CRC : 56|8@1+ (1,0) [0|255] "" LEAFSIM
+
+BO_ 468 VCM_TorqueCmd_1D4: 8 ZOMBIE
+ SG_ TorqueRequestRaw : 23|12@0- (1,0) [-2048|2047] "" LEAFSIM
+ SG_ HVStatus : 32|4@1+ (1,0) [0|15] "" LEAFSIM
+ SG_ Counter : 38|2@1+ (1,0) [0|3] "" LEAFSIM
+ SG_ CRC : 56|8@1+ (1,0) [0|255] "" LEAFSIM
+
+BO_ 474 INV_Status_1DA: 8 LEAFSIM
+ SG_ Voltage : 0|8@1+ (2,0) [0|510] "V" ZOMBIE
+ SG_ ReportedTorque : 18|11@0- (0.5,0) [-512|511.5] "Nm" ZOMBIE
+ SG_ MotorSpeed : 39|16@0- (0.5,0) [-16384|16383.5] "rpm" ZOMBIE
+ SG_ ErrorBits : 52|4@1+ (1,0) [0|15] "" ZOMBIE
+
+BO_ 1370 INV_Temps_55A: 8 LEAFSIM
+ SG_ MotorTemp : 8|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
+ SG_ InverterTemp : 16|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
+
+
+CM_ BU_ ZOMBIE "ZombieVerter VCU, real hardware under test.";
+CM_ BU_ LEAFSIM "LilyGo T-CAN485 simulating the Nissan Leaf inverter, motor and load.";
+CM_ BO_ 282 "Leaf VCM gear and on/off, sent by the Zombie every 10 ms in run mode only.";
+CM_ SG_ 282 Gear "0x4E drive, 0x2E reverse, 0x01 park.";
+CM_ SG_ 282 OnOff "0x40 car on, 0x80 off (charging).";
+CM_ BO_ 468 "Leaf VCM torque request, sent by the Zombie every 10 ms in run mode only.";
+CM_ SG_ 468 TorqueRequestRaw "Counts. Zombie: raw = torquePercent * 2047 / 100 (LeafINV::SetTorque). Nm = raw * kT; kT 0.25 Nm is an assumption, VERIFY (plan section 12, V1). Decoded Nm is in 0x4B0 from M5.";
+CM_ SG_ 468 HVStatus "7 HV on, 3 precharge, 2 off.";
+CM_ SG_ 468 CRC "Nissan CRC-8, polynomial 0x85, over bytes 0-6.";
+CM_ BO_ 474 "Leaf inverter status, sent by the simulator every 10 ms from power-up.";
+CM_ SG_ 474 Voltage "Zombie uses it as udc only below 420 V with ShuntType = 0.";
+CM_ SG_ 474 ReportedTorque "Layout is an assumption, VERIFY (plan section 12, V3). Always 0 from the simulator.";
+CM_ SG_ 474 MotorSpeed "True signed speed. The Zombie decodes reverse speeds 1 rpm high.";
+CM_ SG_ 474 ErrorBits "Byte 6 bits 4-7. Zombie: error when (byte6 & 0xB0) != 0. Simulator fault sets bit 4.";
+CM_ BO_ 1370 "Leaf inverter temperatures, sent by the simulator every 100 ms. Degrees Fahrenheit on the bus.";
+
+VAL_ 282 Gear 78 "Drive" 46 "Reverse" 1 "Park" ;
+VAL_ 468 HVStatus 7 "HV on" 3 "Precharge" 2 "Off" ;
