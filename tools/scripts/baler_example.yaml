@@ -1,0 +1,13 @@
+# Example bench script for run_script.py. Times are seconds from the start.
+#   python run_script.py scripts/baler_example.yaml --port COM7 --stream-out run.csv
+baud: 921600
+steps:
+  - {at: 0.0,  cmd: "preset noload"}
+  - {at: 0.2,  cmd: "stream 1 1"}
+  - {at: 0.5,  cmd: "mark 1"}
+  - {at: 10.0, cmd: "preset baler"}
+  - {at: 40.0, cmd: "load off"}
+  - {at: 45.0, cmd: "load step 60 500 0.3"}
+  - {at: 60.0, cmd: "load step 0"}
+  - {at: 65.0, cmd: "mark 2"}
+  - {at: 66.0, cmd: "stream 0"}

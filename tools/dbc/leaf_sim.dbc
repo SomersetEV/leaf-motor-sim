@@ -81,6 +81,30 @@ BO_ 1187 GOV_State_4A3: 8 ZOMBIE
  SG_ Regenmax : 40|8@1- (1,0) [-128|127] "%" LEAFSIM
  SG_ Throtramp : 48|8@1+ (1,0) [0|255] "%/10ms" LEAFSIM
 
+BO_ 1200 SIM_Fast_4B0: 8 LEAFSIM
+ SG_ ModelSpeed : 0|16@1- (0.5,0) [-16384|16383.5] "rpm" ZOMBIE
+ SG_ TorqueReq : 16|16@1- (0.1,0) [-3276.8|3276.7] "Nm" ZOMBIE
+ SG_ TorqueMotor : 32|16@1- (0.1,0) [-3276.8|3276.7] "Nm" ZOMBIE
+ SG_ TorqueLoad : 48|16@1- (0.1,0) [-3276.8|3276.7] "Nm" ZOMBIE
+
+BO_ 1201 SIM_Slow_4B1: 8 LEAFSIM
+ SG_ Inertia : 0|16@1+ (0.001,0) [0|65.535] "kg.m2" ZOMBIE
+ SG_ PresetId : 16|8@1+ (1,0) [0|255] "" ZOMBIE
+ SG_ ProfileState : 24|8@1+ (1,0) [0|3] "" ZOMBIE
+ SG_ FlagRxTimeout : 32|1@1+ (1,0) [0|1] "" ZOMBIE
+ SG_ FlagClipping : 33|1@1+ (1,0) [0|1] "" ZOMBIE
+ SG_ FlagNoise : 34|1@1+ (1,0) [0|1] "" ZOMBIE
+ SG_ FlagFault : 35|1@1+ (1,0) [0|1] "" ZOMBIE
+ SG_ FlagBusError : 36|1@1+ (1,0) [0|1] "" ZOMBIE
+ SG_ Rejected1D4 : 40|8@1+ (1,0) [0|255] "" ZOMBIE
+ SG_ Overruns : 48|8@1+ (1,0) [0|255] "" ZOMBIE
+ SG_ WorstJitter : 56|8@1+ (0.1,0) [0|25.5] "ms" ZOMBIE
+
+BO_ 1202 SIM_Event_4B2: 8 LEAFSIM
+ SG_ Event : 0|8@1+ (1,0) [0|255] "" ZOMBIE
+ SG_ EventValue : 8|16@1+ (1,0) [0|65535] "" ZOMBIE
+ SG_ SimTime : 24|32@1+ (1,0) [0|4294967295] "ms" ZOMBIE
+
 BO_ 1370 INV_Temps_55A: 8 LEAFSIM
  SG_ MotorTemp : 8|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
  SG_ InverterTemp : 16|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
@@ -113,7 +137,21 @@ CM_ SG_ 1185 GovCounter "Increments every frame; gaps mean dropped frames.";
 CM_ BO_ 1186 "Zombie governor gains as entered, every 100 ms with GovLog = On.";
 CM_ BO_ 1187 "Zombie governor settings and state, every 100 ms with GovLog = On.";
 CM_ SG_ 1187 GovFlt "Speed filter shift: 4 is about 155 ms, 3 about 75 ms, 2 about 35 ms.";
+CM_ BO_ 1200 "Simulator model state, every 10 ms. ModelSpeed has no measurement noise.";
+CM_ SG_ 1200 TorqueReq "0x1D4 request as decoded with kT; zero after the 100 ms timeout.";
+CM_ SG_ 1200 TorqueMotor "Motor torque after the envelope and lag.";
+CM_ SG_ 1200 TorqueLoad "Signed load torque on the shaft: friction plus loads.";
+CM_ BO_ 1201 "Simulator status, every 100 ms.";
+CM_ SG_ 1201 Inertia "Inertia in use, including step dJ or the profile's inertia column.";
+CM_ SG_ 1201 PresetId "0 none, 1 noload, 2 topper, 3 baler, 4 pto_step, 200 SD-only preset.";
+CM_ SG_ 1201 Rejected1D4 "0x1D4 frames rejected for CRC or length, wrapping.";
+CM_ SG_ 1201 Overruns "10 ms tick overruns, wrapping.";
+CM_ SG_ 1201 WorstJitter "Worst tick period error in the last second.";
+CM_ BO_ 1202 "Simulator event, sent when a console command changes the simulation.";
+CM_ SG_ 1202 EventValue "Marker number, load torque in Nm (signed 16-bit), preset id, parameter index, or profile row.";
 
 VAL_ 282 Gear 78 "Drive" 46 "Reverse" 1 "Park" ;
 VAL_ 468 HVStatus 7 "HV on" 3 "Precharge" 2 "Off" ;
 VAL_ 1187 Opmode 0 "Off" 1 "Run" 2 "Precharge" 3 "PchFail" 4 "Charge" 5 "Preheat" ;
+VAL_ 1201 ProfileState 0 "Idle" 1 "Loaded" 2 "Running" 3 "Finished" ;
+VAL_ 1202 Event 1 "Marker" 2 "Load" 3 "ProfileStart" 4 "ProfileStop" 5 "Preset" 6 "ParamChange" ;

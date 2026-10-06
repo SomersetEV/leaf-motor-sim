@@ -1,0 +1,7 @@
+{
+  "J": 0.9,
+  "Tc": 10,
+  "pulse_nm": 150,
+  "pulse_period_ms": 700,
+  "pulse_duty_pct": 40
+}

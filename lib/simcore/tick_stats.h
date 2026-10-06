@@ -11,7 +11,7 @@ namespace simcore {
 
 class TickStats {
 public:
-    TickStats(uint32_t nominal_us, uint32_t tolerance_us, uint32_t window_ticks)
+    TickStats(uint32_t nominal_us = 10000, uint32_t tolerance_us = 500, uint32_t window_ticks = 100)
         : nominal_us_(nominal_us), tolerance_us_(tolerance_us), window_ticks_(window_ticks) {}
 
     // period_us: time since the previous tick started.

@@ -106,6 +106,20 @@ bool can_get_cmd(uint32_t now, leafcodec::Cmd1D4 &out) {
     return fresh;
 }
 
+uint32_t can_rejected_1d4() {
+    portENTER_CRITICAL(&s_mux);
+    uint32_t n = s_latch.rejected();
+    portEXIT_CRITICAL(&s_mux);
+    return n;
+}
+
+bool can_bus_error_within(uint32_t now, uint32_t window_ms) {
+    portENTER_CRITICAL(&s_mux);
+    bool recent = s_bus_error_seen && (uint32_t)(now - s_stats.last_bus_error_ms) < window_ms;
+    portEXIT_CRITICAL(&s_mux);
+    return recent;
+}
+
 CanStats can_get_stats() {
     portENTER_CRITICAL(&s_mux);
     CanStats s = s_stats;

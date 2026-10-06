@@ -36,3 +36,7 @@ bool can_send(uint32_t id, const uint8_t *data, uint8_t dlc);
 bool can_get_cmd(uint32_t now_ms, leafcodec::Cmd1D4 &out);
 
 CanStats can_get_stats();
+
+// Cheap reads for the tick (no driver calls).
+uint32_t can_rejected_1d4();
+bool can_bus_error_within(uint32_t now_ms, uint32_t window_ms);

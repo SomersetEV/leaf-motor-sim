@@ -38,9 +38,21 @@ constexpr int CAN_RX_TASK_PRIO   = 23;
 constexpr int CONSOLE_TASK_CORE  = 0;
 constexpr int CONSOLE_TASK_PRIO  = 1;
 constexpr uint32_t TASK_STACK_BYTES = 4096;
+constexpr uint32_t CONSOLE_STACK_BYTES = 6144; // snapshots and SD buffers
 
 constexpr uint32_t CAN_TX_QUEUE_LEN = 32; // plan: at least 16
 constexpr uint32_t CAN_RX_QUEUE_LEN = 32;
+
+// --- Console, streaming, files -----------------------------------------------
+constexpr uint32_t SIM_CMD_QUEUE_LEN   = 8;    // console -> tick commands
+constexpr uint32_t STREAM_RING_LEN     = 256;  // samples, power of two
+constexpr uint32_t STATUS_WINDOW_MS    = 1000; // "in the last second" (LED, flags)
+constexpr uint32_t PRESET_JSON_MAX     = 1024; // bytes
+constexpr const char *SD_PROFILE_DIR   = "/profiles/";
+constexpr const char *SD_PRESET_DIR    = "/presets/";
+constexpr uint8_t  LED_LEVEL           = 24;   // WS2812 brightness, 0-255
+constexpr uint32_t SPEED_NOISE_SEED    = 0x5EED1DA1u;
+constexpr uint32_t LOAD_NOISE_SEED     = 0x10ADu;
 
 // --- Default model parameters (placeholders until section 9 fits) ---------
 

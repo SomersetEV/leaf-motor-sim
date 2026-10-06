@@ -35,6 +35,8 @@ public:
     explicit Plant(const PlantParams &p) { set_params(p); }
     void set_params(const PlantParams &p);
     const PlantParams &params() const { return p_; }
+    // Changes only the inertia, e.g. per tick for load inertia changes.
+    void set_inertia(float j_kgm2) { p_.j_kgm2 = j_kgm2 < J_MIN ? J_MIN : j_kgm2; }
 
     // Advances the model by dt_s with torque request t_req_nm.
     void substep(float t_req_nm, const TickLoads &loads, float dt_s);
