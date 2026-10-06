@@ -49,6 +49,38 @@ BO_ 474 INV_Status_1DA: 8 LEAFSIM
  SG_ MotorSpeed : 39|16@0- (0.5,0) [-16384|16383.5] "rpm" ZOMBIE
  SG_ ErrorBits : 52|4@1+ (1,0) [0|15] "" ZOMBIE
 
+BO_ 1184 GOV_Speed_4A0: 8 ZOMBIE
+ SG_ GovSpeedIn : 0|16@1+ (1,0) [0|65535] "rpm" LEAFSIM
+ SG_ GovSpeedErr : 16|16@1- (0.125,0) [-4096|4095.875] "rpm" LEAFSIM
+ SG_ PotUser : 32|16@1- (0.01,0) [-327.68|327.67] "%" LEAFSIM
+ SG_ Potnom : 48|16@1- (0.01,0) [-327.68|327.67] "%" LEAFSIM
+
+BO_ 1185 GOV_Terms_4A1: 8 ZOMBIE
+ SG_ GovInt : 0|16@1- (0.01,0) [-327.68|327.67] "%" LEAFSIM
+ SG_ GovP : 16|16@1- (0.01,0) [-327.68|327.67] "%" LEAFSIM
+ SG_ GovD : 32|16@1- (0.01,0) [-327.68|327.67] "%" LEAFSIM
+ SG_ GovBinding : 48|1@1+ (1,0) [0|1] "" LEAFSIM
+ SG_ GovOver : 49|1@1+ (1,0) [0|1] "" LEAFSIM
+ SG_ GovIntReset : 50|1@1+ (1,0) [0|1] "" LEAFSIM
+ SG_ GovIntFrozen : 51|1@1+ (1,0) [0|1] "" LEAFSIM
+ SG_ GovIntClamped : 52|1@1+ (1,0) [0|1] "" LEAFSIM
+ SG_ GovCounter : 56|8@1+ (1,0) [0|255] "" LEAFSIM
+
+BO_ 1186 GOV_Gains_4A2: 8 ZOMBIE
+ SG_ Revlim : 0|16@1+ (1,0) [0|65535] "rpm" LEAFSIM
+ SG_ GovKp : 16|16@1+ (0.03125,0) [0|2047.97] "0.01%/rpm" LEAFSIM
+ SG_ GovKi : 32|16@1+ (0.03125,0) [0|2047.97] "0.001%/rpm/tk" LEAFSIM
+ SG_ GovKd : 48|16@1+ (0.03125,0) [0|2047.97] "%/(rpm/tick)" LEAFSIM
+
+BO_ 1187 GOV_State_4A3: 8 ZOMBIE
+ SG_ GovImax : 0|8@1+ (1,0) [0|255] "%" LEAFSIM
+ SG_ GovFlt : 8|8@1+ (1,0) [0|6] "" LEAFSIM
+ SG_ Opmode : 16|8@1+ (1,0) [0|255] "" LEAFSIM
+ SG_ Dir : 24|8@1- (1,0) [-1|1] "" LEAFSIM
+ SG_ TorqDerate : 32|8@1+ (1,0) [0|255] "" LEAFSIM
+ SG_ Regenmax : 40|8@1- (1,0) [-128|127] "%" LEAFSIM
+ SG_ Throtramp : 48|8@1+ (1,0) [0|255] "%/10ms" LEAFSIM
+
 BO_ 1370 INV_Temps_55A: 8 LEAFSIM
  SG_ MotorTemp : 8|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
  SG_ InverterTemp : 16|8@1+ (0.555556,-17.7778) [-17.7778|123.889] "degC" ZOMBIE
@@ -69,6 +101,19 @@ CM_ SG_ 474 ReportedTorque "Layout is an assumption, VERIFY (plan section 12, V3
 CM_ SG_ 474 MotorSpeed "True signed speed. The Zombie decodes reverse speeds 1 rpm high.";
 CM_ SG_ 474 ErrorBits "Byte 6 bits 4-7. Zombie: error when (byte6 & 0xB0) != 0. Simulator fault sets bit 4.";
 CM_ BO_ 1370 "Leaf inverter temperatures, sent by the simulator every 100 ms. Degrees Fahrenheit on the bus.";
+CM_ BO_ 1184 "Zombie governor log, every 10 ms in run mode with GovLog = On (branch gov-logging).";
+CM_ SG_ 1184 GovSpeedIn "Absolute speed passed to SpeedLimitCommand (previous tick's speed).";
+CM_ SG_ 1184 GovSpeedErr "revlim minus the governor's filtered speed.";
+CM_ SG_ 1184 PotUser "Driver throttle demand before any limit.";
+CM_ SG_ 1184 Potnom "Final throttle after all limits and the ramp, before direction.";
+CM_ BO_ 1185 "Zombie governor terms, every 10 ms in run mode with GovLog = On. Governor output = GovP + GovD + GovInt.";
+CM_ SG_ 1185 GovBinding "The governor reduced the throttle this tick.";
+CM_ SG_ 1185 GovIntFrozen "Integral held: the pedal, not the governor, was the binding limit.";
+CM_ SG_ 1185 GovCounter "Increments every frame; gaps mean dropped frames.";
+CM_ BO_ 1186 "Zombie governor gains as entered, every 100 ms with GovLog = On.";
+CM_ BO_ 1187 "Zombie governor settings and state, every 100 ms with GovLog = On.";
+CM_ SG_ 1187 GovFlt "Speed filter shift: 4 is about 155 ms, 3 about 75 ms, 2 about 35 ms.";
 
 VAL_ 282 Gear 78 "Drive" 46 "Reverse" 1 "Park" ;
 VAL_ 468 HVStatus 7 "HV on" 3 "Precharge" 2 "Off" ;
+VAL_ 1187 Opmode 0 "Off" 1 "Run" 2 "Precharge" 3 "PchFail" 4 "Charge" 5 "Preheat" ;

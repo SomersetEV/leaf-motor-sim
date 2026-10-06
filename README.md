@@ -33,3 +33,4 @@ Run these from PowerShell or the PlatformIO terminal in VS Code. The pioarduino 
 | M1 Skeleton, `leafcodec`, native tests | Done |
 | M2 CAN bring-up | Built, awaiting bench test: [docs/bench/M2_can_bringup.md](docs/bench/M2_can_bringup.md) |
 | M3 Plant with base friction, closed loop | Built, awaiting bench test: [docs/bench/M3_closed_loop.md](docs/bench/M3_closed_loop.md) |
+| M4 Zombie governor logging | Built on branch `gov-logging` of Stm32-vcu, awaiting bench test: [docs/bench/M4_gov_logging.md](docs/bench/M4_gov_logging.md) |
