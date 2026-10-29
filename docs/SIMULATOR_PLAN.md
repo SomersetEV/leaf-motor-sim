@@ -600,3 +600,125 @@ Seven assumptions need checking and three risks need watching. None blocks M1 to
 | A single inertia cannot reproduce driveline oscillation. | Bench looks more stable than the tractor. | Caught by validation step 2 or 3. Escalate to the two-mass model. |
 | The real inverter has its own torque ramping and derating that the model lacks. | Bench results near the torque or power limit are optimistic. | Fit `tau` from logs. Treat results where the clipping flag is set as indicative only. |
 | Gains that look best on the bench are tuned to model error. | Poor behaviour back on the tractor. | Always finish with tractor trials of two or three candidates and compare again. |
+
+## 13. Phase 2: speed-mode throttle firmware
+
+Phase 2 starts once M9 is signed off and the Leaf sim is functional. It adds a second throttle mode: pedal % sets an rpm setpoint from 0 to `spdmax`, and a PI loop on measured speed produces the torque request. The aim is a hydrostatic-style feel for the tractor and telehandler work: lift off and the machine slows to the commanded speed, and it holds speed under PTO load or downhill with a trailer.
+
+Torque mode stays the default and its code path is untouched. Speed mode is selected by a parameter and can only be entered at standstill. Build it on a new branch `speed-mode` off the Phase 1 governor branch.
+
+### Signal chain
+
+Each 10 ms step in `ProcessThrottle`, when `throtmode` = 1:
+
+1. Pedal % from the existing pot calibration and deadband, unchanged.
+2. Setpoint: `rpmTarget` = pedal % × `spdmax` (`spdmaxrev` in reverse), clamped to `revlim`.
+3. Setpoint ramp: `rpmSp` moves towards `rpmTarget` at no more than `spdrampup` or `spdrampdn` rpm/s. This does most of the smoothing; the PI should not be tuned to do it.
+4. Speed filter: the same IIR as the governor, coefficient `spdflt`.
+5. PI plus feed-forward: output = `spdkp` × error + integral + `spdff` × `rpmSp`, in torque %.
+6. Output clamp: between the speed-tapered regen limit (`regenmax`, faded below `regenrpm` to zero at `regenendrpm`, as today) and `throtmax`.
+7. Existing chain, unchanged: Udc, Idc and temperature derates, `SpeedLimitCommand` as the hard backstop, then `RampThrottle`.
+8. Anti-windup by back-calculation: the integrator is corrected by the difference between the PI output and the final `potnom` after step 7, so a derate cannot wind it up.
+
+Reuse the Phase 1 governor PID code with its own gains if it fits, or libopeninv's `PiController`. **VERIFY** which is cleaner once the Phase 1 code is final.
+
+### Parameters
+
+New category `CAT_SPEEDMODE`. Defaults are placeholders for the first bench run, not tuned values. Assign ids per B4.
+
+| Name | Unit | Range | Placeholder | Purpose |
+| --- | --- | --- | --- | --- |
+| `throtmode` | — | 0–1 | 0 | 0 = Torque, 1 = Speed |
+| `spdmax` | rpm | 0–10000 | 3000 | Setpoint at 100 % pedal, forward |
+| `spdmaxrev` | rpm | 0–10000 | 1000 | Setpoint at 100 % pedal, reverse |
+| `spdrampup` | rpm/s | 10–10000 | 1500 | Setpoint rise rate |
+| `spdrampdn` | rpm/s | 10–10000 | 2000 | Setpoint fall rate |
+| `spdkp` | %/100 rpm | 0–50 | 2 | Proportional gain |
+| `spdki` | %/(100 rpm·s) | 0–50 | 1 | Integral gain |
+| `spdff` | %/1000 rpm | 0–20 | 0 | Feed-forward on setpoint |
+| `spdflt` | — | 0–8 | 4 | Speed filter coefficient |
+| `spdzero` | rpm | 0–500 | 150 | Below this setpoint with pedal at 0, fade to coast or normal regen |
+| `spdzerofade` | ms | 0–2000 | 300 | Fade time for `spdzero` |
+
+### Zero speed, exits and mode changes
+
+- **Near zero.** With pedal at 0 and `rpmSp` below `spdzero`, the PI output fades to the normal torque-mode off-pedal behaviour over `spdzerofade`. The loop never fights to hold 0 rpm, which would chatter through driveline backlash.
+- **Brake.** Integrator reset, output hands to the existing brake regen path.
+- **Pedal fault, stale `0x1DA` (no frame for 50 ms), direction change, neutral, or leaving `MOD_RUN`.** Integrator reset and zero torque within one 10 ms step.
+- **Mode change.** `throtmode` changes only take effect when speed is below 50 rpm and pedal is at 0. Otherwise the change is held and a flag is set.
+
+### Logging
+
+With `GovLog` on and `throtmode` = 1, add two frames to the Part B set. Both are inside the free `0x4A0`–`0x4BF` range; add them to `leaf_sim.dbc`.
+
+| ID | Period | Bytes | Signal | Type and scale |
+| --- | --- | --- | --- | --- |
+| `0x4A4` | 10 ms | 0–1 | `rpmTarget` | uint16, 1 rpm |
+| | | 2–3 | `rpmSp` after ramp | uint16, 1 rpm |
+| | | 4–5 | Integral term | int16, 0.01 % |
+| | | 6–7 | PI + feed-forward output before derates | int16, 0.01 % |
+| `0x4A5` | 100 ms | 0–1 | `spdkp` as entered | uint16, value × 32 |
+| | | 2–3 | `spdki` as entered | uint16, value × 32 |
+| | | 4–5 | `spdff` as entered | uint16, value × 32 |
+| | | 6 | `throtmode` | uint8 |
+| | | 7 | Speed-mode flags: zero fade, exit reason, windup active, mode change held | uint8 bitfield |
+
+### Host tests
+
+Extend `test/test_throttle.cpp`:
+
+1. Torque-mode golden test passes unchanged with `throtmode` = 0.
+2. Setpoint ramp: a pedal step gives a setpoint that rises at exactly `spdrampup`.
+3. Clamp: output never exceeds `throtmax` or goes below the tapered regen limit.
+4. Anti-windup: hold a derate at 20 % for 5 s with a large error, release it, and the integrator is no larger than the clamp allows.
+5. Exits: each exit condition resets the integrator and gives zero torque in one step.
+6. Mode change refused above 50 rpm, accepted at standstill with no output step.
+
+## 14. Phase 2: speed-mode bench tests
+
+Speed mode is proven on the bench in ten scripted tests before it goes near the tractor. The rig, plant model and load presets from Phase 1 carry over. Four simulator additions are needed first, because speed mode depends on driver input and driveline behaviour that Phase 1 could leave out.
+
+### Simulator additions
+
+- **Scripted pedal.** Promote the I2C DAC from Later extensions to required (two MCP4725 channels for dual-pot checking). Console commands `pedal <pct>`, `pedal ramp <from> <to> <ms>` and `pedal fault`, which drives the second channel out of range. Brake becomes a driven digital input with `brake on|off`.
+- **Backlash.** Promote the two-mass driveline from Later extensions, with a dead angle `backlash` referred to the motor shaft (placeholder 3°, from a slow-reversal log on the tractor). Without it, test S6 means nothing.
+- **Report delay.** Parameter `rptdelay`, 0–50 ms, holds back each `0x1DA` speed value by that much, to test robustness to CAN and inverter latency.
+- **Overrun load.** Allow a negative constant load torque, so the load drives the motor as a trailer does downhill.
+
+Add frame `0x4B3` at 10 ms with commanded pedal % (uint16, 0.01 %), brake state, `rptdelay` and the backlash state (in contact or in the gap), so every speed-mode run is fully described by its log.
+
+### Test cases
+
+Pass criteria are starting targets for Ben to adjust after the first runs. Each test runs from a `run_script.py` script, with `GovLog` on.
+
+| ID | Test | Script | Pass criteria |
+| --- | --- | --- | --- |
+| S1 | Setpoint step, no load | `noload`, pedal 20 % → 30 % | Overshoot ≤ 3 % of the step; within ± 25 rpm of setpoint in 1.5 s after the ramp ends |
+| S2 | Pedal ramp tracking | `noload`, pedal 0 → 80 % over 5 s | Tracking error ≤ 100 rpm during the ramp, no oscillation after |
+| S3 | Load step at steady pedal | `pto_step` at 50 % pedal | Sag ≤ 150 rpm; back within ± 25 rpm in 1 s; no more than 2 cycles of oscillation |
+| S4 | Overrun | negative load, 40 % pedal | Holds setpoint within ± 50 rpm on regen; regen never beyond the tapered limit |
+| S5 | Derate windup | sim raises motor temperature in `0x55A` until `tmpmmax` derates for 5 s, then drops it | Overshoot after release ≤ 5 % of setpoint; windup flag set during the derate |
+| S6 | Zero crossing and backlash | lift off from 1500 rpm to 0; then pedal 2 % ↔ 4 % at 1 Hz | Torque changes sign at most once per lift-off; fades to coast below `spdzero`; no chatter at low setpoint |
+| S7 | Safety exits | brake on; `pedal fault`; sim stops `0x1DA`; direction change | Zero torque or brake regen path within 20 ms; integrator reset in `0x4A4`; exit reason in `0x4A5` |
+| S8 | Latency margin | repeat S1 and S3 at `rptdelay` 20 ms and 40 ms | Stable at 20 ms; behaviour at 40 ms recorded as the margin |
+| S9 | Mode change | change `throtmode` at 1000 rpm, then at standstill | Refused and flagged while moving; no torque step when accepted |
+| S10 | Baler pulse comparison | `baler` preset, same pedal, torque mode then speed mode | Speed ripple in speed mode lower than torque mode with the governor, at equal or lower peak torque |
+
+Extend `compare_runs.py` with overshoot, settling time, sag, recovery time, integrated absolute error and torque sign changes per run, so every test produces the same metrics row.
+
+### Tuning order
+
+1. Set `spdrampup` and `spdrampdn` for feel first, with conservative gains, on S1 and S2.
+2. Raise `spdkp` on S1 until overshoot appears, then back off by a third.
+3. Raise `spdki` on S3 until sag recovery meets the target without extra cycles.
+4. Add `spdff` only if S2 tracking still lags.
+5. Check every candidate against S5 to S8 before calling it a candidate.
+
+### Milestones
+
+| # | Milestone | Built by | Acceptance |
+| --- | --- | --- | --- |
+| M10 | Speed mode on branch `speed-mode` | Claude, Ben tests | Host tests in section 13 pass; torque-mode golden test unchanged; `0x4A4` and `0x4A5` decode through the DBC |
+| M11 | Simulator additions | Claude, Ben tests | Pedal, brake, backlash, `rptdelay` and overrun all work from the console and show in `0x4B3` |
+| M12 | Test suite S1–S10 scripted | Claude | All ten run unattended from `run_script.py` and produce a metrics table |
+| M13 | Tuned candidates and first tractor trial | Ben, Claude analyses | Two or three settings pass S1–S10; first yard trial at low `spdmax` only after S7 passes |

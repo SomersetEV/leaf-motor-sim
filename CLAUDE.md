@@ -37,6 +37,8 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 
 **Next:** Ben runs the bench procedures in order: `docs/bench/M2_*`, `M3_*`, `M4_*`, `M5_*`, `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
+**Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
+
 ## Build and test
 
 ```text
