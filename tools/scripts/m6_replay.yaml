@@ -1,0 +1,32 @@
+# M6 replay on the bench: SD presets and profiles, error replies, and a bus
+# log for the match check. Needs the card from docs/bench/M6_* in the sim,
+# the Zombie in Run, and the pedal held (any fixed position) so the shaft turns.
+#   python run_script.py scripts/m6_replay.yaml --port COM3 --log m6.txt --canlog-out m6_bus.log
+baud: 921600
+reply_timeout_s: 5
+steps:
+  - {at: 0.0,  cmd: "stat"}                         # sd=1
+  - {at: 0.5,  cmd: "presets"}                      # lists baler.json, topper.json
+  - {at: 1.0,  cmd: "profile list"}
+  - {at: 1.5,  cmd: "profile load baler_bench"}     # ok rows=2999 seconds=29.99
+  - {at: 2.5,  cmd: "preset noload"}
+  - {at: 2.7,  cmd: "params"}                       # base friction for the match check
+  - {at: 3.0,  cmd: "canlog 1"}
+  - {at: 5.0,  cmd: "mark 1"}
+  - {at: 6.0,  cmd: "profile start"}                # ProfileStart event, LED yellow
+  - {at: 11.0, cmd: "profile load baler_bench", allow_err: true}  # err stop the profile first
+  - {at: 11.5, cmd: "stat"}                         # profile=running
+  - {at: 38.0, cmd: "stat"}                         # profile=finished
+  - {at: 38.5, cmd: "mark 2"}
+  - {at: 39.0, cmd: "profile loop 1"}
+  - {at: 39.5, cmd: "profile start"}                # runs past its 30 s end
+  - {at: 72.0, cmd: "stat"}                         # profile=running, row wrapped
+  - {at: 72.5, cmd: "profile stop"}
+  - {at: 73.0, cmd: "profile loop 0"}
+  - {at: 74.0, cmd: "canlog 0"}
+  - {at: 75.0, cmd: "profile load nosuch", allow_err: true}       # err file not found
+  - {at: 75.5, cmd: "profile load bad_spacing", allow_err: true}  # err rows must be 10 ms apart from 0 at line 4
+  - {at: 76.0, cmd: "preset nosuch", allow_err: true}             # err unknown preset, try presets
+  - {at: 76.5, cmd: "preset topper"}
+  - {at: 77.0, cmd: "stat"}                         # J=0.750 noise=on (card file over built-in)
+  - {at: 77.5, cmd: "preset noload"}
