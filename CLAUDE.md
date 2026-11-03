@@ -30,20 +30,20 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M2 CAN bring-up | Bench tested (3 Nov 2026) |
 | M3 plant, closed loop | Bench tested (3 Nov 2026). Bench setup needs `BMS_Mode` 0; see `docs/bench/M3_*`. |
 | M4 Zombie `gov-logging` | Bench tested (3 Nov 2026), second capture. The first capture failed on the ID 162 clash below. |
-| M5 loads, presets, console, telemetry | Bench run 3 Nov 2026. Claude drove the console over COM3 with `tools/scripts/m5_part*.yaml`. Everything passes except tick jitter: wakes run about 0.6–0.7 ms late, 4–10 times a second, whatever the load, speed or streaming. Also open: bus errors and SavvyCAN dropping Zombie frames since M4, and step 7 not confirmed on the Zombie. |
+| M5 loads, presets, console, telemetry | Bench tested 3 Nov 2026, all steps pass (step 7, the inverter error, confirmed by Ben). Claude drove the console over COM3 with `tools/scripts/m5_part*.yaml`. Tick jitter (about 0.68 ms late wakes) was fixed in `55de8ac`; the worst is now 7–8 µs. Bus errors came from the powered Due, and the sim's `canlog` replaces SavvyCAN. |
 | M5a SDO gain control and sweeps | Built 3 Nov 2026: `zset`/`zget` bench-tested against the Zombie, and `tools/sweep.py` runs end to end. Four sweeps run with the pedal clamped (Kp, Ki, `govFlt`, Kd; results in `docs/bench/M5a_*`). On the placeholder baler, the best so far is Kp 11, Ki 1, `govFlt` 2, Kd 0–1; Kd 2 and above is unstable at no-load. Ben can't find the baler logs, so sweeps use the placeholder `baler` preset for now. The telematics SD card had only one short raw log (`session_0052.csv`, 100 kB). |
-| M6 SD profiles and PC tools | SD replay bench tested (3 Nov 2026): a profile built from a bench log replays to 0.09 Nm, and the closed loop reproduces its source run to 4.8 rpm. Open: `selftest.py` on Ben's PC. |
+| M6 SD profiles and PC tools | SD replay bench tested (3 Nov 2026): a profile built from a bench log replays to 0.09 Nm, and the closed loop reproduces its source run to 4.8 rpm. `selftest.py` 21/21 and native tests 64/64 on the laptop. Done. |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** `selftest.py` on Ben's PC to close M6, and `topper.json` (test only) to come off the sim's SD card. Then M7 tractor captures. Meanwhile, a speed-noise check at `govFlt` 2 against 4 (`set noise <rpm>` adds noise to the reported speed only). SD transfer over serial (`sd ls`/`sd get`, `tools/sd_pull.py`) is parked in a git stash, because `sd ls` rebooted the sim. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** `topper.json` (test only) to come off the sim's SD card. Then M7 tractor captures. Meanwhile, a speed-noise check at `govFlt` 2 against 4 (`set noise <rpm>` adds noise to the reported speed only). SD transfer over serial (`sd ls`/`sd get`, `tools/sd_pull.py`) is parked in a git stash, because `sd ls` rebooted the sim. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 
 ## Build and test
 
 ```text
-pio test -e native             # 60 Unity tests for lib/
+pio test -e native             # 64 Unity tests for lib/
 pio run -e tcan485             # firmware (pioarduino "stable": Arduino-ESP32 3.3.0, IDF 5.5)
 python tools/selftest.py       # 21 checks; needs g++ on PATH and tools/requirements.txt
 ```
@@ -74,7 +74,7 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 - **Profiles** are stored in 8 kB chunks, capped at 60,000 rows, because the ESP32 often lacks a contiguous 120 kB block. Inertia is stored as change points.
 - **Bench capture is the sim's `canlog`, not SavvyCAN** (3 Nov 2026). Ben's Due with GVRET sends about 120 error frames a second even in listen-only mode, and it dropped Zombie frames from its captures; keep it unpowered. To capture, run `tools/run_script.py ... --canlog-out bus.log` with `canlog 1` in the script. On the laptop, the sim is on COM3 (CH9102) and the Due on COM5. Claude can flash and drive the sim from here (`pio run -e tcan485 -t upload --upload-port COM3`; a first connect attempt sometimes fails, so retry).
 - **Tick timing:** the tick has core 1 to itself. The UART and TWAI drivers are installed from a core-0 init task, and `can_rx_task` runs on core 0. With the TWAI ISR or `can_rx_task` on core 1, the errata reset on each bus error held off the tick by about 0.6 ms (M5 bench).
-- **Laptop tooling:** `.venv` (Python 3.11 from `~/.platformio/python3`) has `tools/requirements.txt` installed. There is no host `g++`, so `pio test -e native` and `selftest.py` need Ben's PC or a MinGW install.
+- **Laptop tooling:** `.venv` (Python 3.11 from `~/.platformio/python3`) has `tools/requirements.txt` installed. `g++` is WinLibs GCC 16.2 (`winget` `BrechtSanders.WinLibs.POSIX.UCRT`, per user, 3 Nov 2026). If a shell doesn't find it, put `%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_Microsoft.Winget.Source_8wekyb3d8bbwe\mingw64in` first on `PATH`. Native tests and `selftest.py` both pass with it.
 - **Preset numbers are placeholders.** `noload`, `topper`, `baler` and `pto_step` were invented by Claude until M7 data exists. Files at `/presets/<name>.json` on SD override them.
 
 ## Open items (plan section 12)
@@ -85,7 +85,7 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 | V2 motor 280 Nm, 80 kW | Open: Ben to confirm the motor and inverter generation |
 | V3 reported torque layout in `0x1DA` | Open: behind `SIM_REPORT_TORQUE`, default off |
 | V4 CAN pins | Settled |
-| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Not yet tried with speed noise. |
+| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Not yet tried with speed noise. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
 | V6 raw 10 ms CAN logging on the tractor | Open |
 | V7 run-mode inputs for the vehicle class | Open: needs the tractor's `Vehicle` parameter, then read its `Ready()`/`Start()` in Stm32-vcu |
 

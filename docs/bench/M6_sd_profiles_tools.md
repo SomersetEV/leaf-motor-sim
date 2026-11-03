@@ -2,7 +2,7 @@
 
 **Goal (plan section 11, M6):** the tool self-test recovers known parameters within 5 %. A generated profile replays from SD and matches its source torque trace in `0x4B0`.
 
-## 1. PC tools (no hardware, Ben's PC)
+## 1. PC tools (no hardware)
 
 ```text
 cd tools
@@ -10,7 +10,7 @@ python -m pip install -r requirements.txt
 python selftest.py
 ```
 
-It should finish with `21/21 checks passed`. It needs `g++` on `PATH`. WinLibs or MSYS2 MinGW both work on Windows. The laptop has neither: its LLVM `clang++` finds MSVC but not the Windows SDK headers. The run here gave the following:
+It should finish with `21/21 checks passed`. It needs `g++` on `PATH`. WinLibs or MSYS2 MinGW both work on Windows. The laptop has WinLibs from `winget` (`BrechtSanders.WinLibs.POSIX.UCRT`); its LLVM `clang++` does not work, as it finds MSVC but not the Windows SDK headers. The run here gave the following:
 - `J`, `Tc`, `b` and `c` recovered to within 0.11 %;
 - a synthetic baler load recovered with an RMS error of 1.8 Nm on a 150 Nm peak;
 - the profile replayed through the firmware's profile code to within 0.05 Nm (storage is 0.1 Nm).
@@ -85,4 +85,4 @@ Logs are in `D:\Downloads\leaf sim testing logs\m6`.
   | Torque swing per stroke (Nm) | 161 | 164 |
 
 - **LED:** yellow while the profile ran (Ben).
-- **Still to do:** section 1 (`selftest.py`, Ben's PC).
+- **Section 1: pass, on the laptop** with WinLibs GCC 16.2. `21/21 checks passed`: J, Tc, b and c recovered to within 0.11 %; the baler load to 1.81 Nm RMS; the firmware profile replay to within 0.050 Nm. `pio test -e native`: 64/64.

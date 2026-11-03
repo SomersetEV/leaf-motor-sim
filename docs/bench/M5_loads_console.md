@@ -47,3 +47,10 @@ Flash, open the console, and put the Zombie in Run mode with the governor holdin
 8. **LED.** Blue when the Zombie is out of Run mode, green when it is in Run mode.
 
 Send back: the `stat` line from step 6 and a SavvyCAN capture of steps 2 to 4.
+
+## Results (3 Nov 2026)
+
+- Steps 1 to 6 and 8 pass, driven by Claude over COM3 (`tools/scripts/m5_part*.yaml`, `m5_step6.yaml`).
+- Step 6 tick jitter was about 0.68 ms late, 4–10 times a second, at first. It was fixed in `55de8ac` by installing the UART and TWAI drivers from core 0 and moving `can_rx_task` to core 0. Late ticks are now 0, and the worst jitter is 7–8 µs.
+- Step 7 passes: the Zombie showed the inverter error (Ben).
+- Bus errors (about 120 a second) came from the powered Due running GVRET, even in listen-only mode. Keep it unpowered. Bench captures now use the sim's `canlog` instead of SavvyCAN.
