@@ -1,0 +1,19 @@
+# Theory test, no baler: tractor on the road at full pedal, the governor
+# holding revlim against a slowly changing gradient. Rough numbers for about
+# 2.5 t at ~25 km/h, ~0.03 m of travel per motor radian:
+#   reflected inertia J ~2.5 kg.m2; rolling ~20 Nm at the motor; a 5-6 % climb
+#   ~60 Nm; a 4 % descent ~-15 Nm net (overrun, the governor must regen).
+# Road roughness 3 Nm at 2 Hz, speed-sensor noise 5 rpm.
+#   python sweep.py scripts/sweep_road.yaml --port COM3 --out <folder>
+load:
+  preset: noload
+  cmds: ["load noise 3 2"]
+  grad: [[0, 20], [10, 20], [25, 60], [40, 60], [55, -15], [70, -15], [80, 20], [90, 20]]
+settle_s: 8
+run_s: 90
+base: {govKp: 11, govKd: 0, sim: {J: 2.5, noise: 5}}
+sets:
+  - {govKi: 0, govFlt: 4}   # the tractor today
+  - {govKi: 0, govFlt: 2}
+  - {govKi: 1, govFlt: 4}
+  - {govKi: 1, govFlt: 2}   # best on the placeholder baler

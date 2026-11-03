@@ -9,6 +9,11 @@ error. GovLog is turned on for the sweep (it is needed for scoring) and
 restored with the gains. Nothing is saved on the Zombie: a power cycle
 restores its setup.
 
+The governor integral is cleared at the start of each set by setting govImax
+to 0 for a moment (the Zombie clamps the integral to +-govImax while the
+governor is binding). Otherwise a set with govKi 0 keeps whatever integral
+the previous set left, since only speed below revlim/2 resets it.
+
 A set may also hold `sim:` model parameters for the simulator, such as
 `sim: {noise: 5}` for speed noise on 0x1DA. Presets reset the model, so they
 are applied again after every load change, and put back by preset noload.
@@ -22,6 +27,10 @@ the governor was the binding limit, so a slipped pedal shows up.
 Example sweep.yaml:
 
     load: {preset: baler}          # or {profile: baler_r3}  (SD /profiles/)
+    # A load can also run console commands after the preset (cmds) and ramp
+    # the signed gradient torque along [seconds from load start, Nm] points:
+    #   load: {preset: noload, cmds: ["load noise 3 2"],
+    #          grad: [[0, 20], [10, 20], [25, 60], [40, 60]]}
     settle_s: 8                    # no-load time before each run
     run_s: 30
     base: {govKi: 0, govKd: 0}     # applied before each set's own values
@@ -67,8 +76,8 @@ class Console:
         self.log = log
         self.canlog = None
 
-    def _line(self):
-        raw = self.port.readline()
+    def _line(self, raw=None):
+        raw = self.port.readline() if raw is None else raw
         if not raw:
             return None
         line = raw.decode("ascii", errors="backslashreplace").strip()
@@ -85,8 +94,11 @@ class Console:
     def pump(self, seconds: float):
         end = time.monotonic() + seconds
         while time.monotonic() < end:
-            if self._line() is None:
-                time.sleep(0.002)
+            raw = self.port.readline()
+            if raw:
+                self._line(raw)
+            else:
+                time.sleep(0.002)  # only when idle: canlog runs at ~500 lines/s
 
     def cmd(self, c: str, timeout_s: float = 3.0) -> str:
         self.port.write((c + "\n").encode())
@@ -124,6 +136,29 @@ def apply_load(con: Console, load: dict):
     else:
         con.cmd(f"profile load {load['profile']}", timeout_s=30.0)
         con.cmd("profile start")
+    for c in load.get("cmds") or []:
+        con.cmd(c)
+
+
+def run_load(con: Console, load: dict, run_s: float):
+    """Holds the load for run_s, ramping the gradient if the load has one."""
+    pts = load.get("grad")
+    if not pts:
+        con.pump(run_s)
+        return
+    ts = [float(p[0]) for p in pts]
+    nm = [float(p[1]) for p in pts]
+    t0 = time.monotonic()
+    last = None
+    while (now := time.monotonic() - t0) < run_s:
+        v = round(float(np.interp(now, ts, nm)), 1)
+        if last is None:
+            con.cmd(f"load grad {v}")  # checked once; later replies are skipped by pump
+        elif v != last:
+            con.port.write(f"load grad {v}\n".encode())
+        last = v
+        con.pump(min(GRAD_STEP_S, run_s - now))
+    con.pump(0.2)  # so no late 'ok' is taken as the next command's reply
 
 
 def apply_sim(con: Console, sim: dict):
@@ -140,9 +175,11 @@ def clear_load(con: Console, load: dict):
     con.cmd("preset noload")
 
 
+GRAD_STEP_S = 0.1            # gradient ramps are sent as 'load grad' this often
 LOAD_START_EVENTS = (3, 5)  # 0x4B2 ProfileStart, Preset
 LOAD_SKIP_S = 5.0            # load-phase metrics start this long after the load is applied
 NOLOAD_TAIL_S = 3.0          # no-load stability is judged over the last few seconds
+INT_CLEAR_S = 0.5            # govImax held at 0 this long to clear the integral
 
 
 def _stroke_p2p(t, v, period_s):
@@ -189,6 +226,14 @@ def score(bus_log: Path, revlim: float) -> dict:
         if log.has(SIM_SPEED):
             ws = np.abs(g[SIM_SPEED].to_numpy(dtype=float))[ld]
             m["model_stroke_p2p_rpm"] = _stroke_p2p(tl, ws, period)
+    if ld.any():
+        err = v[ld] - revlim
+        m["load_rms_err_rpm"] = float(np.sqrt(np.mean(err ** 2)))
+        m["load_max_over_rpm"] = float(err.max())
+        m["load_max_under_rpm"] = float(-err.min())
+        if log.has(SIM_TREQ):
+            d = np.diff(g[SIM_TREQ].to_numpy(dtype=float)[ld]) / np.sqrt(2)
+            m["treq_tick_rms_nm"] = float(np.sqrt(np.nanmean(d ** 2)))
     m["peak_integral_pct"] = mt.peak_abs(g[loglib.GOV_INT]) if log.has(loglib.GOV_INT) else float("nan")
     m["pedal_pct"] = float(np.nanmean(g[POT_USER].to_numpy(dtype=float)[ld])) if log.has(POT_USER) else float("nan")
     m["binding_frac"] = (float(np.nanmean(g[loglib.GOV_BINDING].to_numpy(dtype=float)[ld] > 0.5))
@@ -208,7 +253,7 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
 
     con.cmd("stream 0")
     con.cmd("canlog 0")
-    original = {n: con.zget(n) for n in sorted(set(names) | {"revlim", "GovLog"})}
+    original = {n: con.zget(n) for n in sorted(set(names) | {"revlim", "GovLog", "govImax"})}
     log(f"Zombie at start: {original}")
     rows = []
     try:
@@ -220,6 +265,9 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
             log(f"set {i}/{len(s['sets'])}: {gains}" + (f" sim {sim}" if sim else ""))
             clear_load(con, load)
             apply_sim(con, sim)
+            con.cmd("zset govImax 0")  # clears the integral the previous set left
+            con.pump(INT_CLEAR_S)
+            con.cmd(f"zset govImax {gains.get('govImax', original['govImax'])}")
             con.pump(NOLOAD_TAIL_S)  # let the previous load's removal die away
             bus = out / f"run_{i:02d}_bus.log"
             with open(bus, "w") as f:
@@ -231,7 +279,7 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
                 con.pump(settle_s)  # no-load phase, scored for stability
                 apply_load(con, load)
                 apply_sim(con, sim)
-                con.pump(run_s)
+                run_load(con, load, run_s)
                 con.cmd("canlog 0")
                 con.pump(0.2)  # lines already queued
                 con.canlog = None
