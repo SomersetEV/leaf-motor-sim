@@ -29,13 +29,13 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M1 codec and native tests | Done |
 | M2 CAN bring-up | Bench tested (3 Nov 2026) |
 | M3 plant, closed loop | Bench tested (3 Nov 2026). Bench setup needs `BMS_Mode` 0; see `docs/bench/M3_*`. |
-| M4 Zombie `gov-logging` | Flashed to the bench Zombie, bench procedure not yet run. Host tests pass. |
+| M4 Zombie `gov-logging` | Bench tested (3 Nov 2026), second capture. The first capture failed on the ID 162 clash below. |
 | M5 loads, presets, console, telemetry | Built, unit tested, not bench tested |
 | M6 SD profiles and PC tools | Tools done and self-tested; SD replay not bench tested |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** Ben runs the remaining bench procedures in order: `docs/bench/M4_*`, `M5_*`, `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** Ben runs the remaining bench procedures in order: `docs/bench/M5_*`, then `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 
@@ -66,6 +66,8 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
   - `0x1DA` as decoded by the Zombie: reverse speeds read 1 rpm high (not compensated, on purpose); `udc` used only below 420 V with `ShuntType` 0; error = `(b6 & 0xB0) != 0`.
   - Governor: the speed filter is shift 4, about 155 ms, not the 30 ms the old comment claimed (plan V5). The comment is corrected in `gov-logging`, and `govFlt` makes the shift a parameter.
   - Parameter IDs: `govFlt` 162, `GovLog` 163, spot values 2126–2129. Next free IDs are 164 and 2130.
+  - **Known clash, left as is by Ben (3 Nov 2026):** `Tractor-RPM-limiting-testing` `c1ad315` (19 Oct) also uses ID 162, for `MGChgLimRaw` (default 2046). Flash load skips range checks, so going from that firmware to `gov-logging` loads `govFlt` = 2046. The filter then goes NaN and the governor commands `regenmax` regardless of pedal until reboot. After any switch between the two, set `govFlt` = 4 (or `MGChgLimRaw` = 2046), save and power-cycle. `gov-logging` is not to be changed for this yet.
+- **Tractor governor setup (Ben, 3 Nov 2026):** `revlim` 2200, `govKp` 11, `govKi` 0, `govKd` 0, `govImax` 100, `regenmax` −30, `throtramp` 10. It is P-only today.
 - **Tests compare against the Zombie's own code.** `test/test_leafcodec` contains verbatim copies of the Zombie encode and decode functions. On the Zombie side, the governor golden test was recorded from the unmodified code, and the first commit on `gov-logging` contains only that test.
 - **PC tools must mirror `lib/plant` exactly.** `tools/simmodel.py` reproduces the firmware's 1 ms lag sub-steps; the continuous-time lag biased b and c. `loglib` interpolates speeds onto the 10 ms grid, because holding the last value creates derivative spikes. `extract_params` picks the request-to-speed delay from −2 to +2 ticks automatically.
 - **Profiles** are stored in 8 kB chunks, capped at 60,000 rows, because the ESP32 often lacks a contiguous 120 kB block. Inertia is stored as change points.
@@ -79,7 +81,7 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 | V2 motor 280 Nm, 80 kW | Open: Ben to confirm the motor and inverter generation |
 | V3 reported torque layout in `0x1DA` | Open: behind `SIM_REPORT_TORQUE`, default off |
 | V4 CAN pins | Settled |
-| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2 |
+| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. Shift 3 not run yet. |
 | V6 raw 10 ms CAN logging on the tractor | Open |
 | V7 run-mode inputs for the vehicle class | Open: needs the tractor's `Vehicle` parameter, then read its `Ready()`/`Start()` in Stm32-vcu |
 

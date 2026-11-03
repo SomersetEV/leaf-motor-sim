@@ -30,6 +30,8 @@ Host tests: `cd test && make && ./test_vcu`. The run should end with `All tests 
 
 Flash `stm32_vcu.bin` or `stm32_vcu.hex` the way you normally update the Zombie. Saved parameters are kept. Afterwards the Governor category shows `govFlt = 4` and `GovLog = Off`.
 
+If `govFlt` shows anything outside 0 to 6, usually 2046, the Zombie last saved parameters under `Tractor-RPM-limiting-testing`, where ID 162 is `MGChgLimRaw`. Set `govFlt = 4`, save, and power-cycle the Zombie. The power cycle matters: a bad shift leaves the governor's filter at NaN, and only a reboot clears it. Until then `potnom` sits at `regenmax` whatever the pedal does.
+
 ## 2. Bench setup
 
 Use the M3 bench setup: the simulator running, the Zombie in Run mode, and SavvyCAN logging the bench bus with `tools/dbc/leaf_sim.dbc` loaded. `CanMapCan` must be the bench bus.
@@ -47,7 +49,7 @@ Use the M3 bench setup: the simulator running, the Zombie in Run mode, and Savvy
    - `GovCounter` steps by 1 every frame with no gaps.
    - `GOV_Gains_4A2`: `Revlim`, `GovKp`, `GovKi` and `GovKd` equal the values entered in the web interface.
    - `GOV_State_4A3`: `Opmode` = Run, and `GovFlt` = 4.
-4. **Pedal is the limit.** Hold the pedal low so speed stays below `revlim`. `GovIntFrozen` = 1 and `GovBinding` = 0.
+4. **Pedal is the limit.** Hold the pedal so speed sits between `revlim`/2 and `revlim` (1100 to 2200 rpm at `revlim` 2200). `GovIntFrozen` = 1 and `GovBinding` = 0. Below `revlim`/2 the governor resets the integral instead, so you see `GovIntReset` = 1 and `GovIntFrozen` = 0.
 5. **`govFlt` change.** Set `govFlt = 2`. `GOV_State_4A3.GovFlt` follows, and the governor responds faster. Set it back to 4.
 6. **Bus load.** SavvyCAN's bus load rises by about 6 % with `GovLog` on.
 
