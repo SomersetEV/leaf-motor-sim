@@ -1,0 +1,11 @@
+# M5a third sweep: governor speed filter shift (plan V5) at govKp 11, govKi 1,
+# placeholder baler preset. Shift 4 is about 155 ms, 3 about 75 ms, 2 about 35 ms.
+#   python sweep.py scripts/sweep_flt_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+base: {govKp: 11, govKi: 1, govKd: 0}
+sets:
+  - {govFlt: 4}
+  - {govFlt: 3}
+  - {govFlt: 2}

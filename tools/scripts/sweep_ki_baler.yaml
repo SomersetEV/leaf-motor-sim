@@ -1,0 +1,12 @@
+# M5a second sweep: govKi at the tractor's govKp 11, placeholder baler preset.
+# govKi is entered in 0.001 %/rpm/tick (2 -> 0.002).
+#   python sweep.py scripts/sweep_ki_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+base: {govKp: 11, govKd: 0, govFlt: 4}
+sets:
+  - {govKi: 0}
+  - {govKi: 1}
+  - {govKi: 2}
+  - {govKi: 4}
