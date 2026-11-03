@@ -14,6 +14,7 @@ python selftest.py          # needs g++ on PATH; checks every tool against synth
 | `make_profile.py` | R5, R6 or R7 log, plus `params.json` | Profile CSV for `/profiles/` on the SD card |
 | `compare_runs.py` | A tractor log and a bench log of the same scenario | Metrics table and overlay plot |
 | `run_script.py` | YAML script and the simulator's serial port | Timed console commands. `--stream-out` saves the CSV stream and `--canlog-out` the bus log (`canlog 1`, candump format, readable by `loglib`). Bench scripts are in `scripts/` |
+| `sweep.py` | Sweep YAML and the simulator's serial port | M5a: runs Zombie gain sets over SDO (`zset`) against a preset or SD profile, logs each run with `canlog`, and writes `metrics.csv` using `compare_runs.compute`. Restores the original gains at the end. Example: `scripts/sweep_kp_baler.yaml` |
 
 ## Typical flow
 

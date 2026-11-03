@@ -1,0 +1,12 @@
+# M5a first sweep: govKp against the placeholder baler preset, P-only like the tractor.
+# Replace the load with a real profile once Ben's baler logs are found.
+#   python sweep.py scripts/sweep_kp_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+base: {govKi: 0, govKd: 0}
+sets:
+  - {govKp: 8}
+  - {govKp: 11}
+  - {govKp: 14}
+  - {govKp: 18}

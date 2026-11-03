@@ -24,6 +24,7 @@ enum EventType : uint8_t {
     EV_PROFILE_STOP = 4,
     EV_PRESET = 5,
     EV_PARAM = 6,
+    EV_ZPARAM = 7,  // Zombie parameter written over SDO; value = parameter id
 };
 
 // 0x4B0, every 10 ms: model speed 0.5 rpm, torques 0.1 Nm

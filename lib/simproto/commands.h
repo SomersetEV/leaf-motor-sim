@@ -26,6 +26,7 @@ enum class CmdType : uint8_t {
     ProfileExp,    // f = n, w_ref rpm
     Mark,          // i = marker number
     FaultInv,      // i = 0/1
+    ZParamEvent,   // i = Zombie parameter id just written by zset; sends 0x4B2
 };
 
 struct SimCmd {

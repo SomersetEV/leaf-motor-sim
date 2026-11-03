@@ -31,12 +31,12 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M3 plant, closed loop | Bench tested (3 Nov 2026). Bench setup needs `BMS_Mode` 0; see `docs/bench/M3_*`. |
 | M4 Zombie `gov-logging` | Bench tested (3 Nov 2026), second capture. The first capture failed on the ID 162 clash below. |
 | M5 loads, presets, console, telemetry | Bench run 3 Nov 2026. Claude drove the console over COM3 with `tools/scripts/m5_part*.yaml`. Everything passes except tick jitter: wakes run about 0.6–0.7 ms late, 4–10 times a second, whatever the load, speed or streaming. Also open: bus errors and SavvyCAN dropping Zombie frames since M4, and step 7 not confirmed on the Zombie. |
-| M5a SDO gain control and sweeps | Added by Ben on 3 Nov 2026; see plan section 11. Not started. Ben has baler logs. |
+| M5a SDO gain control and sweeps | Built 3 Nov 2026: `zset`/`zget` bench-tested against the Zombie, and `tools/sweep.py` runs end to end. A sweep with the pedal held is not yet run (`docs/bench/M5a_*`). Ben can't find the baler logs, so sweeps use the placeholder `baler` preset for now. The telematics SD card had only one short raw log (`session_0052.csv`, 100 kB). |
 | M6 SD profiles and PC tools | Tools done and self-tested; SD replay not bench tested |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** fix the M5 tick jitter, then build M5a, then run the M6 bench procedure. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** Ben clamps the pedal so Claude can run `tools/scripts/sweep_kp_baler.yaml`, then the M6 bench procedure. SD transfer over serial (`sd ls`/`sd get`, `tools/sd_pull.py`) is parked in a git stash, because `sd ls` rebooted the sim. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 

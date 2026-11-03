@@ -9,6 +9,7 @@
 #include "console_parse.h"
 #include "param_table.h"
 #include "telemetry.h"
+#include "zombie_sdo.h"
 
 using namespace simproto;
 
@@ -212,6 +213,68 @@ static void test_candump_line() {
     TEST_ASSERT_EQUAL_STRING("(4294967295.000000) can0 7FF#ABCD", buf);
 }
 
+static void test_zparam_whitelist() {
+    const ZParam *kp = zparam_find("govKp");
+    TEST_ASSERT_NOT_NULL(kp);
+    TEST_ASSERT_EQUAL(157, kp->id);
+    const ZParam *flt = zparam_find("govFlt");
+    TEST_ASSERT_NOT_NULL(flt);
+    TEST_ASSERT_EQUAL(162, flt->id);
+    const ZParam *gl = zparam_find("GovLog");
+    TEST_ASSERT_NOT_NULL(gl);
+    TEST_ASSERT_EQUAL(163, gl->id);
+    TEST_ASSERT_EQUAL(7, ZPARAM_COUNT);
+    TEST_ASSERT_NULL(zparam_find("throtmax"));  // not writable from the simulator
+    TEST_ASSERT_NULL(zparam_find("govkp"));     // names are case-sensitive
+}
+
+static void test_sdo_requests() {
+    uint8_t b[8];
+    sdo_write_request(157, 14.0f, b);  // govKp = 14 -> 448 = 0x1C0
+    const uint8_t w[8] = {0x23, 0x00, 0x21, 0x9D, 0xC0, 0x01, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(w, b, 8);
+
+    sdo_write_request(15, 2200.0f, b);  // revlim, id below 256
+    const uint8_t r15[8] = {0x23, 0x00, 0x21, 0x0F, 0x00, 0x13, 0x01, 0x00};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(r15, b, 8);
+
+    sdo_write_request(157, 0.03125f, b);  // smallest step, 1 count
+    TEST_ASSERT_EQUAL_HEX8(0x01, b[4]);
+
+    sdo_write_request(300, -1.0f, b);  // id above 255 goes in the index; negative value
+    const uint8_t neg[8] = {0x23, 0x01, 0x21, 0x2C, 0xE0, 0xFF, 0xFF, 0xFF};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(neg, b, 8);
+
+    sdo_read_request(158, b);
+    const uint8_t rd[8] = {0x40, 0x00, 0x21, 0x9E, 0x00, 0x00, 0x00, 0x00};
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(rd, b, 8);
+}
+
+static void test_sdo_replies() {
+    const uint8_t rd[8] = {0x43, 0x00, 0x21, 0x9D, 0x60, 0x01, 0x00, 0x00};  // 352 = 11.0
+    SdoResult r = sdo_decode_reply(rd, 8);
+    TEST_ASSERT_TRUE(r.kind == SdoReply::ReadOk);
+    TEST_ASSERT_EQUAL(157, r.id);
+    TEST_ASSERT_EQUAL_FLOAT(11.0f, r.value);
+
+    const uint8_t wr[8] = {0x60, 0x00, 0x21, 0x9D, 0xC0, 0x01, 0x00, 0x00};
+    r = sdo_decode_reply(wr, 8);
+    TEST_ASSERT_TRUE(r.kind == SdoReply::WriteOk);
+    TEST_ASSERT_EQUAL_FLOAT(14.0f, r.value);
+
+    const uint8_t ab[8] = {0x80, 0x00, 0x21, 0xA2, 0x30, 0x00, 0x09, 0x06};
+    r = sdo_decode_reply(ab, 8);
+    TEST_ASSERT_TRUE(r.kind == SdoReply::Abort);
+    TEST_ASSERT_EQUAL(162, r.id);
+    TEST_ASSERT_EQUAL_HEX32(0x06090030u, r.abort_code);
+
+    r = sdo_decode_reply(rd, 7);  // short
+    TEST_ASSERT_TRUE(r.kind == SdoReply::Bad);
+    const uint8_t other[8] = {0x43, 0x00, 0x50, 0x00, 0, 0, 0, 0};  // not a parameter index
+    r = sdo_decode_reply(other, 8);
+    TEST_ASSERT_TRUE(r.kind == SdoReply::Bad);
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_cmd_set);
@@ -221,6 +284,9 @@ int main(int, char **) {
     RUN_TEST(test_4b1_and_4b2);
     RUN_TEST(test_csv_line);
     RUN_TEST(test_candump_line);
+    RUN_TEST(test_zparam_whitelist);
+    RUN_TEST(test_sdo_requests);
+    RUN_TEST(test_sdo_replies);
     RUN_TEST(test_line_endings);
     RUN_TEST(test_overlong_line_discarded);
     RUN_TEST(test_max_length_line_kept);

@@ -47,6 +47,11 @@ void can_log_set(CanLogMode mode);
 bool can_log_pop(simproto::CanLogFrame &f);
 uint32_t can_log_dropped();
 
+// Zombie SDO replies (0x583) for the console's zset and zget. Arm before
+// sending a request; take returns true once a reply has arrived since.
+void can_sdo_arm();
+bool can_sdo_take(uint8_t out[8], uint8_t &dlc);
+
 // Cheap reads for the tick (no driver calls).
 uint32_t can_rejected_1d4();
 bool can_bus_error_within(uint32_t now_ms, uint32_t window_ms);

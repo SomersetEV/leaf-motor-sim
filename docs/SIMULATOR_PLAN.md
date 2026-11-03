@@ -586,7 +586,7 @@ The Zombie's SDO server is node 3 on CAN1 (`sdo.SetNodeId(3)` in `stm32_vcu.cpp`
 | `govFlt` | 162 |
 
 - **Console:** `zset <name> <value>` and `zget <name>`. The console task sends the request and waits up to 100 ms for the reply, outside the tick. The CAN receive task hands `0x583` replies to the console.
-- **Whitelist:** only the six parameters above can be written. The simulator never sends the SDO save command (index `0x5002`), so a Zombie power cycle restores its saved setup.
+- **Whitelist:** only the six parameters above, plus `GovLog` (163) so a sweep can turn on the governor frames, can be written. The simulator never sends the SDO save command (index `0x5002`), so a Zombie power cycle restores its saved setup.
 - **Events:** each accepted write emits a `0x4B2` event (`ZParam`, value = parameter ID), and the console logs the old and new values.
 - **Sweeps:** `tools/sweep.py` reads a list of gain sets and runs each one: `zset` the gains, run a preset or SD profile for a fixed time, and score the stream with `tools/metrics.py`. It writes one metrics row per gain set. For baler tuning it uses profiles made from Ben's baler logs with `make_profile.py` (M6).
 - **Pedal:** a sweep needs the pedal held at a fixed position for its whole length, so Ben needs a clamp or a fixed pot. A throttle DAC stays out of scope.

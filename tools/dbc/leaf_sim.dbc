@@ -154,4 +154,4 @@ VAL_ 282 Gear 78 "Drive" 46 "Reverse" 1 "Park" ;
 VAL_ 468 HVStatus 7 "HV on" 3 "Precharge" 2 "Off" ;
 VAL_ 1187 Opmode 0 "Off" 1 "Run" 2 "Precharge" 3 "PchFail" 4 "Charge" 5 "Preheat" ;
 VAL_ 1201 ProfileState 0 "Idle" 1 "Loaded" 2 "Running" 3 "Finished" ;
-VAL_ 1202 Event 1 "Marker" 2 "Load" 3 "ProfileStart" 4 "ProfileStop" 5 "Preset" 6 "ParamChange" ;
+VAL_ 1202 Event 1 "Marker" 2 "Load" 3 "ProfileStart" 4 "ProfileStop" 5 "Preset" 6 "ParamChange" 7 "ZParam" ;

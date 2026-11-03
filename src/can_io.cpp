@@ -10,11 +10,16 @@
 #include "cmd_latch.h"
 #include "config.h"
 #include "pins.h"
+#include "zombie_sdo.h"
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static simcore::CmdLatch s_latch(RX_TIMEOUT_MS);
 static CanStats s_stats = {};
 static bool s_bus_error_seen = false;
+
+static uint8_t s_sdo_data[8];
+static uint8_t s_sdo_dlc = 0;
+static bool s_sdo_ready = false;
 
 static QueueHandle_t s_log_q;
 static std::atomic<uint8_t> s_log_mode{CANLOG_OFF};
@@ -52,6 +57,24 @@ bool can_log_pop(simproto::CanLogFrame &f) {
 }
 
 uint32_t can_log_dropped() { return s_log_dropped.load(std::memory_order_relaxed); }
+
+void can_sdo_arm() {
+    portENTER_CRITICAL(&s_mux);
+    s_sdo_ready = false;
+    portEXIT_CRITICAL(&s_mux);
+}
+
+bool can_sdo_take(uint8_t out[8], uint8_t &dlc) {
+    portENTER_CRITICAL(&s_mux);
+    bool ready = s_sdo_ready;
+    if (ready) {
+        memcpy(out, s_sdo_data, 8);
+        dlc = s_sdo_dlc;
+        s_sdo_ready = false;
+    }
+    portEXIT_CRITICAL(&s_mux);
+    return ready;
+}
 
 bool can_init() {
     pinMode(PIN_5V_EN, OUTPUT);
@@ -91,6 +114,10 @@ static void handle_frame(const twai_message_t &m) {
         }
     } else if (m.identifier == ID_LEAF_VCM_ALIVE) {
         s_stats.rx_50b++;
+    } else if (m.identifier == simproto::SDO_REP_ID) {
+        memcpy(s_sdo_data, m.data, 8);
+        s_sdo_dlc = m.data_length_code;
+        s_sdo_ready = true;
     } else {
         s_stats.rx_other++;
     }

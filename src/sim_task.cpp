@@ -100,6 +100,9 @@ static void apply(const SimCmd &c, uint32_t now_ms) {
     case CmdType::FaultInv:
         s_inv_fault = c.i != 0;
         break;
+    case CmdType::ZParamEvent:
+        send_event(simproto::EV_ZPARAM, (uint16_t)c.i, now_ms);
+        break;
     }
 }
 

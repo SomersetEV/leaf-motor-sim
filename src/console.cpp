@@ -14,6 +14,7 @@
 #include "sim_defaults.h"
 #include "sim_task.h"
 #include "status_led.h"
+#include "zombie_sdo.h"
 
 using simproto::CmdType;
 using simproto::SimCmd;
@@ -58,6 +59,7 @@ static void cmd_help() {
     Serial.println("  profile load <file> | profile start | profile stop | profile loop <0|1>");
     Serial.println("  profile exp <n> <w_ref_rpm> | profile list");
     Serial.println("  mark <n> | fault inv <0|1> | stream <0|1> [divider] | canlog <0|1> [all]");
+    Serial.println("  zget <name> | zset <name> <value>   (Zombie governor params over SDO)");
 }
 
 static void cmd_params() {
@@ -202,6 +204,77 @@ static void cmd_canlog(int argc, char **argv) {
     reply_ok();
 }
 
+// One SDO exchange with the Zombie: send req, wait for its 0x583 reply.
+// Blocks the console (not the tick) for up to ZSDO_TIMEOUT_MS.
+static const char *zsdo(const uint8_t req[8], uint16_t id, simproto::SdoResult &r) {
+    can_sdo_arm();
+    if (!can_send(simproto::SDO_REQ_ID, req, 8)) return "CAN transmit failed";
+    for (uint32_t waited = 0; waited < ZSDO_TIMEOUT_MS; waited += 2) {
+        vTaskDelay(pdMS_TO_TICKS(2));
+        uint8_t d[8];
+        uint8_t dlc = 0;
+        if (!can_sdo_take(d, dlc)) continue;
+        r = simproto::sdo_decode_reply(d, dlc);
+        if (r.id != id || r.kind == simproto::SdoReply::Bad) continue;  // not ours
+        if (r.kind == simproto::SdoReply::Abort) {
+            static char msg[48];
+            snprintf(msg, sizeof(msg), "Zombie refused (abort 0x%08lX)", (unsigned long)r.abort_code);
+            return msg;
+        }
+        return nullptr;
+    }
+    return "no reply from Zombie (SDO node 3)";
+}
+
+static const char *zread(uint16_t id, float &value) {
+    uint8_t req[8];
+    simproto::sdo_read_request(id, req);
+    simproto::SdoResult r;
+    const char *err = zsdo(req, id, r);
+    if (!err && r.kind != simproto::SdoReply::ReadOk) err = "unexpected SDO reply";
+    if (!err) value = r.value;
+    return err;
+}
+
+static const simproto::ZParam *zparam_arg(const char *name) {
+    const simproto::ZParam *p = simproto::zparam_find(name);
+    if (!p) reply_err("not allowed (revlim govKp govKi govKd govImax govFlt GovLog)");
+    return p;
+}
+
+static void cmd_zget(int argc, char **argv) {
+    if (argc != 2) return reply_err("usage: zget <name>");
+    const simproto::ZParam *p = zparam_arg(argv[1]);
+    if (!p) return;
+    float v = 0;
+    const char *err = zread(p->id, v);
+    if (err) return reply_err(err);
+    Serial.printf("ok %s=%g\n", p->name, v);
+}
+
+// Reads the old value, writes, then reads back what the Zombie now holds.
+static void cmd_zset(int argc, char **argv) {
+    float v = 0;
+    if (argc != 3 || !simproto::parse_float(argv[2], v)) return reply_err("usage: zset <name> <value>");
+    const simproto::ZParam *p = zparam_arg(argv[1]);
+    if (!p) return;
+    float old = 0, now = 0;
+    const char *err = zread(p->id, old);
+    if (!err) {
+        uint8_t req[8];
+        simproto::sdo_write_request(p->id, v, req);
+        simproto::SdoResult r;
+        err = zsdo(req, p->id, r);
+    }
+    if (!err) err = zread(p->id, now);
+    if (err) return reply_err(err);
+    s_cmd = SimCmd{};
+    s_cmd.type = CmdType::ZParamEvent;
+    s_cmd.i = p->id;
+    sim_post(s_cmd);  // 0x4B2 event; the write itself has already happened
+    Serial.printf("ok %s=%g was=%g\n", p->name, now, old);
+}
+
 static void handle_line(char *line) {
     char *argv[8];
     int argc = simproto::tokenize(line, argv, 8);
@@ -216,6 +289,8 @@ static void handle_line(char *line) {
     if (strcmp(c, "presets") == 0) return cmd_presets();
     if (strcmp(c, "stream") == 0) return cmd_stream(argc, argv);
     if (strcmp(c, "canlog") == 0) return cmd_canlog(argc, argv);
+    if (strcmp(c, "zget") == 0) return cmd_zget(argc, argv);
+    if (strcmp(c, "zset") == 0) return cmd_zset(argc, argv);
     if (strcmp(c, "profile") == 0 && argc >= 2 && strcmp(argv[1], "load") == 0) {
         if (argc != 3) return reply_err("usage: profile load <file>");
         return cmd_profile_load(argv[2]);

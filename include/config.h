@@ -51,6 +51,9 @@ constexpr uint32_t CONSOLE_STACK_BYTES = 6144; // snapshots and SD buffers
 constexpr uint32_t CAN_TX_QUEUE_LEN = 32; // plan: at least 16
 constexpr uint32_t CAN_RX_QUEUE_LEN = 32;
 
+// zset and zget wait this long for the Zombie's SDO reply (plan M5a)
+constexpr uint32_t ZSDO_TIMEOUT_MS = 100;
+
 // Console bus log (canlog), which replaces SavvyCAN on the bench. Filtered
 // mode keeps what the tools need: the Zombie's torque request, gear and
 // governor frames, the simulator's own frames, and SDO to and from node 3.
