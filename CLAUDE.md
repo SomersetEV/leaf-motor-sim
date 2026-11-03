@@ -30,12 +30,13 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M2 CAN bring-up | Bench tested (3 Nov 2026) |
 | M3 plant, closed loop | Bench tested (3 Nov 2026). Bench setup needs `BMS_Mode` 0; see `docs/bench/M3_*`. |
 | M4 Zombie `gov-logging` | Bench tested (3 Nov 2026), second capture. The first capture failed on the ID 162 clash below. |
-| M5 loads, presets, console, telemetry | Built, unit tested, not bench tested |
+| M5 loads, presets, console, telemetry | Bench run 3 Nov 2026. Claude drove the console over COM3 with `tools/scripts/m5_part*.yaml`. Everything passes except tick jitter: wakes run about 0.6–0.7 ms late, 4–10 times a second, whatever the load, speed or streaming. Also open: bus errors and SavvyCAN dropping Zombie frames since M4, and step 7 not confirmed on the Zombie. |
+| M5a SDO gain control and sweeps | Added by Ben on 3 Nov 2026; see plan section 11. Not started. Ben has baler logs. |
 | M6 SD profiles and PC tools | Tools done and self-tested; SD replay not bench tested |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** Ben runs the remaining bench procedures in order: `docs/bench/M5_*`, then `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** fix the M5 tick jitter, then build M5a, then run the M6 bench procedure. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 
@@ -71,6 +72,9 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 - **Tests compare against the Zombie's own code.** `test/test_leafcodec` contains verbatim copies of the Zombie encode and decode functions. On the Zombie side, the governor golden test was recorded from the unmodified code, and the first commit on `gov-logging` contains only that test.
 - **PC tools must mirror `lib/plant` exactly.** `tools/simmodel.py` reproduces the firmware's 1 ms lag sub-steps; the continuous-time lag biased b and c. `loglib` interpolates speeds onto the 10 ms grid, because holding the last value creates derivative spikes. `extract_params` picks the request-to-speed delay from −2 to +2 ticks automatically.
 - **Profiles** are stored in 8 kB chunks, capped at 60,000 rows, because the ESP32 often lacks a contiguous 120 kB block. Inertia is stored as change points.
+- **Bench capture is the sim's `canlog`, not SavvyCAN** (3 Nov 2026). Ben's Due with GVRET sends about 120 error frames a second even in listen-only mode, and it dropped Zombie frames from its captures; keep it unpowered. To capture, run `tools/run_script.py ... --canlog-out bus.log` with `canlog 1` in the script. On the laptop, the sim is on COM3 (CH9102) and the Due on COM5. Claude can flash and drive the sim from here (`pio run -e tcan485 -t upload --upload-port COM3`; a first connect attempt sometimes fails, so retry).
+- **Tick timing:** the tick has core 1 to itself. The UART and TWAI drivers are installed from a core-0 init task, and `can_rx_task` runs on core 0. With the TWAI ISR or `can_rx_task` on core 1, the errata reset on each bus error held off the tick by about 0.6 ms (M5 bench).
+- **Laptop tooling:** `.venv` (Python 3.11 from `~/.platformio/python3`) has `tools/requirements.txt` installed. There is no host `g++`, so `pio test -e native` and `selftest.py` need Ben's PC or a MinGW install.
 - **Preset numbers are placeholders.** `noload`, `topper`, `baler` and `pto_step` were invented by Claude until M7 data exists. Files at `/presets/<name>.json` on SD override them.
 
 ## Open items (plan section 12)

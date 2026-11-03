@@ -20,7 +20,7 @@ A third, smaller piece is PC tooling in Python that turns tractor CAN logs into 
 
 Tuning covers `govKp`, `govKi`, `govKd`, `govImax` and the speed filter shift.
 
-**Out of scope for phase 1.** These are later extensions and must not be built yet: throttle DAC output, driving the Zombie digital inputs, BMS, shunt or charger simulation, a two-mass driveline model, and automated gain sweeps over CAN SDO.
+**Out of scope for phase 1.** These are later extensions and must not be built yet: throttle DAC output, driving the Zombie digital inputs, BMS, shunt or charger simulation, and a two-mass driveline model. Gain control over CAN SDO was moved into phase 1 as M5a by Ben on 3 Nov 2026.
 
 ## 2. Working rules for Claude in VS Code
 
@@ -331,8 +331,10 @@ A steady 10 ms tick is the one hard requirement. The Zombie governor's gains and
 | Task | Core | Priority | Job |
 | --- | --- | --- | --- |
 | `sim_task` | 1 | Highest | The 10 ms loop, timed with `vTaskDelayUntil` at a 1 kHz tick rate. |
-| `can_rx_task` | 1 | High | Blocks on `twai_receive`, decodes frames, updates a shared latest-command struct with a timestamp. |
+| `can_rx_task` | 0 | High | Blocks on `twai_receive`, decodes frames, updates a shared latest-command struct with a timestamp. |
 | `console_task` | 0 | Low | Serial commands, CSV streaming, SD file loading. |
+
+The UART and TWAI drivers are installed from a short init task on core 0, so their interrupts run on core 0 too. The M5 bench showed why: on each bus error, the TWAI ISR's errata workaround resets the controller while holding the driver lock. A task on core 1 waiting for that lock held off the tick by about 0.6 ms.
 
 WiFi and Bluetooth stay off in phase 1.
 
@@ -373,6 +375,7 @@ Line-based commands at 921600 baud. Every command replies with one line starting
 | `mark <n>` | Send a marker event in `0x4B2`. |
 | `fault inv <0\|1>` | Set or clear the inverter error bit in `0x1DA`. |
 | `stream <0\|1> [divider]` | CSV streaming on or off, optionally every Nth tick. |
+| `canlog <0\|1> [all]` | Bus log on or off: received and transmitted frames as candump `-l` lines, `(s.us) can0 ID#DATA`. By default it logs only the IDs in `CANLOG_IDS`; `all` logs every frame. A full queue drops frames and counts them in `stat` as `canlog_dropped`. |
 
 Streamed CSV columns: `t_ms,raw_req,t_req_nm,t_motor_nm,t_load_nm,rpm,flags`. If the ring buffer overflows, drop samples and count them. Never block the tick.
 
@@ -554,7 +557,7 @@ Score every run with the metrics in section 9. Pick two or three candidate setti
 
 ## 11. Milestones and acceptance criteria
 
-Nine milestones, each ending in a test Ben can run. M4 does not depend on M1 to M3 and can be built first if tractor logging is the priority. M7 needs M4 and M6.
+Ten milestones, each ending in a test Ben can run. M4 does not depend on M1 to M3 and can be built first if tractor logging is the priority. M7 needs M4 and M6.
 
 | # | Milestone | Built by | Acceptance |
 | --- | --- | --- | --- |
@@ -563,16 +566,37 @@ Nine milestones, each ending in a test Ben can run. M4 does not depend on M1 to 
 | M3 | Plant with base friction, closed loop | Claude, Ben tests | The Zombie completes precharge and reaches run mode. Throttle raises the Zombie's `speed`. Releasing it lets speed fall. The governor holds `revlim`. |
 | M4 | Part B firmware on branch `gov-logging` | Claude, Ben tests | Golden test passes before and after. With `GovLog` off, no new frames appear. With it on, `0x4A0` and `0x4A1` appear at 10 ms and decode sensibly through the DBC. |
 | M5 | Loads, presets, console, telemetry, events | Claude, Ben tests | `load step` and `load pulse` visibly disturb speed. `0x4B0` to `0x4B2` decode through the DBC. Jitter stays inside ± 0.5 ms with streaming on. |
+| M5a | Zombie governor gains over CAN SDO, scripted sweeps | Claude, Ben tests | `zset` and `zget` change and read `govKp`, `govKi`, `govKd`, `govImax`, `govFlt` and `revlim` on the bench Zombie, and the web interface agrees. Each write appears as a `0x4B2` event. A sweep script runs a list of gain sets against a preset or profile unattended and writes a metrics table. `canlog` captures the bench bus with no dropped frames, and `loglib` decodes it. |
 | M6 | SD profiles and PC tools | Claude | Tool self-test recovers known parameters within 5 %. A generated profile replays from SD and matches its source torque trace in `0x4B0`. |
 | M7 | Tractor capture, runs R1 to R7 | Ben | Seven sets of raw logs with `GovLog` on. `extract_params.py` and `make_profile.py` run on them without manual editing. |
 | M8 | Validation, section 10 | Ben, Claude analyses | All four validation steps inside tolerance, or a written list of what does not match and why. |
 | M9 | Tuning, section 10 | Ben, Claude analyses | A metrics table across settings and scenarios, and two or three candidate settings for tractor trials. |
 
+### M5a: gain control over CAN SDO
+
+The Zombie's SDO server is node 3 on CAN1 (`sdo.SetNodeId(3)` in `stm32_vcu.cpp`). Requests go out as `0x603` and replies come back as `0x583`. A parameter is addressed by its unique ID: index `0x2100 | (id >> 8)`, sub-index `id & 0xFF`. The value is fixed point, ×32. `Param::Set` range-checks the value and calls `Param::Change`, so the new value takes effect at once.
+
+| Parameter | ID |
+| --- | --- |
+| `revlim` | 15 |
+| `govKp` | 157 |
+| `govKi` | 158 |
+| `govImax` | 159 |
+| `govKd` | 160 |
+| `govFlt` | 162 |
+
+- **Console:** `zset <name> <value>` and `zget <name>`. The console task sends the request and waits up to 100 ms for the reply, outside the tick. The CAN receive task hands `0x583` replies to the console.
+- **Whitelist:** only the six parameters above can be written. The simulator never sends the SDO save command (index `0x5002`), so a Zombie power cycle restores its saved setup.
+- **Events:** each accepted write emits a `0x4B2` event (`ZParam`, value = parameter ID), and the console logs the old and new values.
+- **Sweeps:** `tools/sweep.py` reads a list of gain sets and runs each one: `zset` the gains, run a preset or SD profile for a fixed time, and score the stream with `tools/metrics.py`. It writes one metrics row per gain set. For baler tuning it uses profiles made from Ben's baler logs with `make_profile.py` (M6).
+- **Pedal:** a sweep needs the pedal held at a fixed position for its whole length, so Ben needs a clamp or a fixed pot. A throttle DAC stays out of scope.
+- **The Zombie side is unchanged.** SDO parameter access is standard libopeninv.
+- **Bench capture comes from the simulator, not SavvyCAN** (Ben, 3 Nov 2026). The Due running GVRET sent error frames even in listen-only mode, and its capture dropped Zombie frames. `canlog` (section 7) logs every frame the simulator sees, and `run_script.py --canlog-out` saves it in candump format, which `loglib` reads like any other log. Sweeps record the bus log and the CSV stream together. Keep the Due unpowered during runs that matter.
+
 ### Later extensions, not to be built now
 
 - Software-in-the-loop on the PC: link `lib/plant` and `lib/loads` with the Zombie's `throttle.cpp` in a host build, to sweep hundreds of gain sets in seconds before any bench run.
 - Throttle output from an I2C DAC and driven digital inputs, for fully scripted driver input.
-- Automated gain sweeps over CAN SDO.
 - SavvyCAN connection through the simulator itself using the GVRET protocol.
 - Two-mass driveline with shaft compliance and backlash.
 - Road vehicle presets, and shunt or BMS simulation.

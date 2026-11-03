@@ -197,6 +197,21 @@ static void test_csv_line() {
     TEST_ASSERT_EQUAL_STRING("1230,-40,-10.00,-9.50,12.25,1501.0,5", buf);
 }
 
+static void test_candump_line() {
+    CanLogFrame f{12345678ull, 0x1D4, 8, {0xF7, 0x07, 0xD9, 0xA0, 0x47, 0x44, 0x30, 0x1F}};
+    char buf[CANDUMP_LINE_MAX];
+    format_candump(f, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("(12.345678) can0 1D4#F707D9A04744301F", buf);
+
+    CanLogFrame g{5ull, 0x55A, 0, {}};
+    format_candump(g, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("(0.000005) can0 55A#", buf);
+
+    CanLogFrame h{4294967295000000ull, 0x7FF, 2, {0xAB, 0xCD}};  // longest timestamp
+    format_candump(h, buf, sizeof(buf));
+    TEST_ASSERT_EQUAL_STRING("(4294967295.000000) can0 7FF#ABCD", buf);
+}
+
 int main(int, char **) {
     UNITY_BEGIN();
     RUN_TEST(test_cmd_set);
@@ -205,6 +220,7 @@ int main(int, char **) {
     RUN_TEST(test_4b0_scaling_and_saturation);
     RUN_TEST(test_4b1_and_4b2);
     RUN_TEST(test_csv_line);
+    RUN_TEST(test_candump_line);
     RUN_TEST(test_line_endings);
     RUN_TEST(test_overlong_line_discarded);
     RUN_TEST(test_max_length_line_kept);

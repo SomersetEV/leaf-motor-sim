@@ -2,7 +2,10 @@
 
 #include <Arduino.h>
 #include <driver/twai.h>
+#include <esp_timer.h>
 #include <string.h>
+
+#include <atomic>
 
 #include "cmd_latch.h"
 #include "config.h"
@@ -13,9 +16,42 @@ static simcore::CmdLatch s_latch(RX_TIMEOUT_MS);
 static CanStats s_stats = {};
 static bool s_bus_error_seen = false;
 
+static QueueHandle_t s_log_q;
+static std::atomic<uint8_t> s_log_mode{CANLOG_OFF};
+static std::atomic<uint32_t> s_log_dropped{0};
+
 static uint32_t now_ms() {
     return (uint32_t)pdTICKS_TO_MS(xTaskGetTickCount());
 }
+
+static void log_frame(uint32_t id, const uint8_t *data, uint8_t dlc) {
+    uint8_t mode = s_log_mode.load(std::memory_order_relaxed);
+    if (mode == CANLOG_OFF) return;
+    if (mode == CANLOG_FILTERED) {
+        bool wanted = false;
+        for (uint32_t w : CANLOG_IDS) wanted |= (w == id);
+        if (!wanted) return;
+    }
+    simproto::CanLogFrame f;
+    f.t_us = (uint64_t)esp_timer_get_time();
+    f.id = id;
+    f.dlc = dlc > 8 ? 8 : dlc;
+    memcpy(f.data, data, f.dlc);
+    if (xQueueSend(s_log_q, &f, 0) != pdTRUE) s_log_dropped.fetch_add(1, std::memory_order_relaxed);
+}
+
+void can_log_set(CanLogMode mode) {
+    s_log_mode.store(CANLOG_OFF, std::memory_order_relaxed);
+    xQueueReset(s_log_q);
+    s_log_dropped.store(0, std::memory_order_relaxed);
+    s_log_mode.store(mode, std::memory_order_relaxed);
+}
+
+bool can_log_pop(simproto::CanLogFrame &f) {
+    return xQueueReceive(s_log_q, &f, 0) == pdTRUE;
+}
+
+uint32_t can_log_dropped() { return s_log_dropped.load(std::memory_order_relaxed); }
 
 bool can_init() {
     pinMode(PIN_5V_EN, OUTPUT);
@@ -33,12 +69,15 @@ bool can_init() {
     twai_timing_config_t t = TWAI_TIMING_CONFIG_500KBITS();
     twai_filter_config_t f = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
+    s_log_q = xQueueCreate(CANLOG_QUEUE_LEN, sizeof(simproto::CanLogFrame));
+    if (!s_log_q) return false;
     if (twai_driver_install(&g, &t, &f) != ESP_OK) return false;
     return twai_start() == ESP_OK;
 }
 
 static void handle_frame(const twai_message_t &m) {
     uint32_t t = now_ms();
+    if (!m.extd && !m.rtr) log_frame(m.identifier, m.data, m.data_length_code);
     portENTER_CRITICAL(&s_mux);
     if (m.extd || m.rtr) {
         s_stats.rx_other++;
@@ -92,6 +131,7 @@ bool can_send(uint32_t id, const uint8_t *data, uint8_t dlc) {
     m.data_length_code = dlc;
     memcpy(m.data, data, dlc);
     bool ok = twai_transmit(&m, 0) == ESP_OK;
+    if (ok) log_frame(id, data, dlc);
     portENTER_CRITICAL(&s_mux);
     if (ok) s_stats.tx_queued++;
     else    s_stats.tx_failed++;
@@ -132,6 +172,7 @@ CanStats can_get_stats() {
     if (twai_get_status_info(&info) == ESP_OK) {
         s.tec   = info.tx_error_counter;
         s.rec   = info.rx_error_counter;
+        s.bus_errors = info.bus_error_count;
         s.state = (uint8_t)info.state;
     }
     return s;

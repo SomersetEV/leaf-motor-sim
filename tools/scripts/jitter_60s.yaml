@@ -1,0 +1,6 @@
+# Tick jitter check: stat, 60 s idle, stat. Compare out_of_tol and ticks.
+#   python run_script.py scripts/jitter_60s.yaml --port COM3
+baud: 921600
+steps:
+  - {at: 0.0,  cmd: "stat"}
+  - {at: 60.0, cmd: "stat"}

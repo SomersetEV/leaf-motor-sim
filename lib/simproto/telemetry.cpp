@@ -54,4 +54,13 @@ int format_csv(const StreamSample &s, char *buf, size_t len) {
                     s.raw_req, s.t_req_nm, s.t_motor_nm, s.t_load_nm, s.rpm, s.flags);
 }
 
+int format_candump(const CanLogFrame &f, char *buf, size_t len) {
+    int n = snprintf(buf, len, "(%lu.%06lu) can0 %03lX#", (unsigned long)(f.t_us / 1000000u),
+                     (unsigned long)(f.t_us % 1000000u), (unsigned long)f.id);
+    uint8_t dlc = f.dlc > 8 ? 8 : f.dlc;
+    for (uint8_t i = 0; i < dlc && n >= 0 && (size_t)n < len; i++)
+        n += snprintf(buf + n, len - n, "%02X", f.data[i]);
+    return n;
+}
+
 } // namespace simproto

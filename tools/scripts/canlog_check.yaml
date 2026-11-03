@@ -1,0 +1,11 @@
+# Bus log check: 30 s of filtered canlog with streaming on, stat before and after.
+#   python run_script.py scripts/canlog_check.yaml --port COM3 --canlog-out bus.log --stream-out stream.csv
+baud: 921600
+steps:
+  - {at: 0.0,  cmd: "stat"}
+  - {at: 0.5,  cmd: "canlog 1"}
+  - {at: 1.0,  cmd: "stream 1"}
+  - {at: 2.0,  cmd: "mark 1"}
+  - {at: 31.0, cmd: "stream 0"}
+  - {at: 31.5, cmd: "canlog 0"}
+  - {at: 32.0, cmd: "stat"}

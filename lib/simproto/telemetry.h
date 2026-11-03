@@ -60,4 +60,18 @@ constexpr const char *CSV_HEADER = "t_ms,raw_req,t_req_nm,t_motor_nm,t_load_nm,r
 // Formats one CSV line (no newline). Returns the length, as snprintf.
 int format_csv(const StreamSample &s, char *buf, size_t len);
 
+// One CAN frame for the console's bus log, received or transmitted.
+struct CanLogFrame {
+    uint64_t t_us;     // microseconds since boot, at receive or transmit queueing
+    uint32_t id;       // 11-bit
+    uint8_t  dlc;
+    uint8_t  data[8];
+};
+
+constexpr size_t CANDUMP_LINE_MAX = 48;
+
+// Formats one frame as a candump -l line, "(s.us) can0 ID#DATA" (no newline),
+// as tools/loglib.py reads it. Returns the length, as snprintf.
+int format_candump(const CanLogFrame &f, char *buf, size_t len);
+
 } // namespace simproto

@@ -1,0 +1,21 @@
+# M5 bench, steps 5 to 7 (docs/bench/M5_loads_console.md). Run after power-cycling the
+# LilyGo at the end of m5_part1.yaml. Zombie back in Run, pedal at 100 %.
+#   python run_script.py scripts/m5_part2.yaml --port COM3 --log m5_part2.txt --stream-out m5_stream.csv
+baud: 921600
+steps:
+  # 5. Parameters, second half: J=0.5 survived the power cycle
+  - {at: 0.0,   cmd: "params"}
+  - {at: 0.5,   cmd: "stat"}
+  - {at: 1.0,   cmd: "set J 0.3"}
+  - {at: 2.0,   cmd: "save"}
+  # 6. Streaming and jitter, 10 minutes of baler
+  - {at: 4.0,   cmd: "preset baler"}
+  - {at: 5.0,   cmd: "stream 1"}
+  - {at: 605.0, cmd: "stream 0"}
+  - {at: 607.0, cmd: "stat"}
+  - {at: 608.0, cmd: "preset noload"}
+  # 7. Fault: check the Zombie's inverter error while it is set
+  - {at: 620.0, cmd: "mark 6"}
+  - {at: 621.0, cmd: "fault inv 1"}
+  - {at: 641.0, cmd: "fault inv 0"}
+  - {at: 643.0, cmd: "stat"}

@@ -57,7 +57,7 @@ static void cmd_help() {
     Serial.println("  load grad <Nm> | load noise <sd_Nm> [corner_hz] | load off");
     Serial.println("  profile load <file> | profile start | profile stop | profile loop <0|1>");
     Serial.println("  profile exp <n> <w_ref_rpm> | profile list");
-    Serial.println("  mark <n> | fault inv <0|1> | stream <0|1> [divider]");
+    Serial.println("  mark <n> | fault inv <0|1> | stream <0|1> [divider] | canlog <0|1> [all]");
 }
 
 static void cmd_params() {
@@ -87,19 +87,20 @@ static void cmd_stat() {
                   l.pulse_on ? "on" : "off", l.grad_nm, l.noise_on ? "on" : "off",
                   profile_state_name(s.profile_state), (unsigned long)s.profile_row);
     Serial.printf(" ticks=%lu period_us=%lu jitter_1s_us=%lu jitter_max_us=%lu"
-                  " overruns=%lu out_of_tol=%lu stream_dropped=%lu",
+                  " overruns=%lu out_of_tol=%lu stream_dropped=%lu canlog_dropped=%lu",
                   (unsigned long)t.ticks(), (unsigned long)t.last_period_us(),
                   (unsigned long)t.window_worst_jitter_us(), (unsigned long)t.worst_jitter_us(),
                   (unsigned long)t.overruns(), (unsigned long)t.out_of_tolerance(),
-                  (unsigned long)sim_stream_dropped());
+                  (unsigned long)sim_stream_dropped(), (unsigned long)can_log_dropped());
     Serial.printf(" rx1d4=%lu rej1d4=%lu rx11a=%lu gear=0x%02X onoff=0x%02X rx50b=%lu"
                   " rx_other=%lu",
                   (unsigned long)c.rx_1d4, (unsigned long)c.rej_1d4, (unsigned long)c.rx_11a,
                   c.gear_11a, c.onoff_11a, (unsigned long)c.rx_50b, (unsigned long)c.rx_other);
-    Serial.printf(" tx_queued=%lu tx_failed=%lu can=%s tec=%lu rec=%lu bus_off=%lu"
+    Serial.printf(" tx_queued=%lu tx_failed=%lu can=%s tec=%lu rec=%lu bus_errors=%lu bus_off=%lu"
                   " last_bus_err_ms=%lu sd=%d\n",
                   (unsigned long)c.tx_queued, (unsigned long)c.tx_failed, twai_state_name(c.state),
-                  (unsigned long)c.tec, (unsigned long)c.rec, (unsigned long)c.bus_off_count,
+                  (unsigned long)c.tec, (unsigned long)c.rec, (unsigned long)c.bus_errors,
+                  (unsigned long)c.bus_off_count,
                   (unsigned long)c.last_bus_error_ms, sd_ready() ? 1 : 0);
 }
 
@@ -191,6 +192,16 @@ static void cmd_stream(int argc, char **argv) {
     }
 }
 
+static void cmd_canlog(int argc, char **argv) {
+    int32_t on = 0;
+    bool all = argc == 3 && strcmp(argv[2], "all") == 0;
+    if (argc < 2 || argc > 3 || (argc == 3 && !all) || !simproto::parse_int(argv[1], on) ||
+        (on != 0 && on != 1))
+        return reply_err("usage: canlog <0|1> [all]");
+    can_log_set(on == 0 ? CANLOG_OFF : (all ? CANLOG_ALL : CANLOG_FILTERED));
+    reply_ok();
+}
+
 static void handle_line(char *line) {
     char *argv[8];
     int argc = simproto::tokenize(line, argv, 8);
@@ -204,6 +215,7 @@ static void handle_line(char *line) {
     if (strcmp(c, "preset") == 0) return cmd_preset(argc, argv);
     if (strcmp(c, "presets") == 0) return cmd_presets();
     if (strcmp(c, "stream") == 0) return cmd_stream(argc, argv);
+    if (strcmp(c, "canlog") == 0) return cmd_canlog(argc, argv);
     if (strcmp(c, "profile") == 0 && argc >= 2 && strcmp(argv[1], "load") == 0) {
         if (argc != 3) return reply_err("usage: profile load <file>");
         return cmd_profile_load(argv[2]);
@@ -224,6 +236,7 @@ static void console_task(void *) {
     simproto::LineReader reader;
     char line[simproto::LineReader::MAX_LINE + 1];
     char csv[96];
+    char cdl[simproto::CANDUMP_LINE_MAX];
     uint32_t last_led = 0;
     uint32_t last_bus_off_count = 0, bus_off_at = 0;
     bool bus_off_seen = false;
@@ -244,6 +257,13 @@ static void console_task(void *) {
         for (int i = 0; s_streaming && i < 16 && sim_stream_pop(smp); i++) {
             simproto::format_csv(smp, csv, sizeof(csv));
             Serial.println(csv);
+        }
+
+        // Bus log: likewise bounded, so a busy bus cannot starve commands
+        simproto::CanLogFrame frm;
+        for (int i = 0; i < 32 && can_log_pop(frm); i++) {
+            simproto::format_candump(frm, cdl, sizeof(cdl));
+            Serial.println(cdl);
         }
 
         uint32_t now = millis();

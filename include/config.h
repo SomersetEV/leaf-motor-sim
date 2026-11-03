@@ -30,18 +30,33 @@ constexpr uint32_t TICK_TOLERANCE_US  = 500; // target 10 ms +/- 0.5 ms
 constexpr uint32_t JITTER_WINDOW_TICKS = 100; // worst jitter per second
 
 // --- Tasks -----------------------------------------------------------------
-// The tick and CAN receive run on core 1; the console runs on core 0.
+// The tick has core 1 to itself; CAN receive and the console run on core 0.
+// can_rx_task takes the TWAI driver lock (twai_read_alerts), which the TWAI
+// ISR holds through its errata reset on every bus error; on core 1 that held
+// off the tick by about 0.6 ms (M5 bench).
 constexpr int SIM_TASK_CORE      = 1;
 constexpr int SIM_TASK_PRIO      = 24; // configMAX_PRIORITIES - 1
-constexpr int CAN_RX_TASK_CORE   = 1;
+constexpr int CAN_RX_TASK_CORE   = 0;
 constexpr int CAN_RX_TASK_PRIO   = 23;
 constexpr int CONSOLE_TASK_CORE  = 0;
 constexpr int CONSOLE_TASK_PRIO  = 1;
+// UART and TWAI drivers are installed from this core so their ISRs stay off
+// the tick's core.
+constexpr int DRIVER_CORE        = 0;
+constexpr int INIT_TASK_PRIO     = 5;
+constexpr uint32_t INIT_STACK_BYTES = 6144; // SD mount and NVS read
 constexpr uint32_t TASK_STACK_BYTES = 4096;
 constexpr uint32_t CONSOLE_STACK_BYTES = 6144; // snapshots and SD buffers
 
 constexpr uint32_t CAN_TX_QUEUE_LEN = 32; // plan: at least 16
 constexpr uint32_t CAN_RX_QUEUE_LEN = 32;
+
+// Console bus log (canlog), which replaces SavvyCAN on the bench. Filtered
+// mode keeps what the tools need: the Zombie's torque request, gear and
+// governor frames, the simulator's own frames, and SDO to and from node 3.
+constexpr uint32_t CANLOG_QUEUE_LEN = 256;  // frames; about 0.5 s at filtered rate
+constexpr uint32_t CANLOG_IDS[] = {0x11A, 0x1D4, 0x1DA, 0x4A0, 0x4A1, 0x4A2, 0x4A3,
+                                   0x4B0, 0x4B1, 0x4B2, 0x55A, 0x583, 0x603};
 
 // --- Console, streaming, files -----------------------------------------------
 constexpr uint32_t SIM_CMD_QUEUE_LEN   = 8;    // console -> tick commands

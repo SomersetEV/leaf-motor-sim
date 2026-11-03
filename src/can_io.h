@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "leafcodec.h"
+#include "telemetry.h"
 
 struct CanStats {
     uint32_t rx_1d4;          // valid 0x1D4 frames
@@ -20,6 +21,7 @@ struct CanStats {
     uint32_t last_bus_error_ms; // 0 if never
     uint32_t tec;             // transmit error counter
     uint32_t rec;             // receive error counter
+    uint32_t bus_errors;      // bus errors seen by the driver since start
     uint8_t  state;           // twai_state_t
 };
 
@@ -36,6 +38,14 @@ bool can_send(uint32_t id, const uint8_t *data, uint8_t dlc);
 bool can_get_cmd(uint32_t now_ms, leafcodec::Cmd1D4 &out);
 
 CanStats can_get_stats();
+
+// Bus log for the console: copies of received and transmitted standard
+// frames. Mode 0 off, 1 the ids in CANLOG_IDS, 2 every frame. Never blocks;
+// a full queue drops the frame and counts it.
+enum CanLogMode : uint8_t { CANLOG_OFF = 0, CANLOG_FILTERED = 1, CANLOG_ALL = 2 };
+void can_log_set(CanLogMode mode);
+bool can_log_pop(simproto::CanLogFrame &f);
+uint32_t can_log_dropped();
 
 // Cheap reads for the tick (no driver calls).
 uint32_t can_rejected_1d4();

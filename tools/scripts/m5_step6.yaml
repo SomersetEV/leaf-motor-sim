@@ -1,0 +1,10 @@
+# M5 step 6 on its own: 10 minutes of baler with streaming, stat before and after.
+#   python run_script.py scripts/m5_step6.yaml --port COM3 --log m5_step6.txt --stream-out m5_step6.csv
+baud: 921600
+steps:
+  - {at: 0.0,   cmd: "stat"}
+  - {at: 1.0,   cmd: "preset baler"}
+  - {at: 2.0,   cmd: "stream 1"}
+  - {at: 602.0, cmd: "stream 0"}
+  - {at: 604.0, cmd: "stat"}
+  - {at: 605.0, cmd: "preset noload"}

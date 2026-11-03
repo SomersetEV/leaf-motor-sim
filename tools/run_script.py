@@ -2,7 +2,8 @@
 
 Plan section 9 and 10. A YAML script lists commands with their start time
 in seconds; each must get an "ok" reply. CSV stream lines arriving in the
-meantime can be saved with --stream-out.
+meantime can be saved with --stream-out, and canlog bus frames (candump -l
+format, readable by loglib) with --canlog-out.
 
     python run_script.py test.yaml [--port COM7] [--dry-run] [--log run.txt]
 
@@ -49,7 +50,7 @@ def load_script(text: str) -> dict:
 
 
 def run(script: dict, port, log=print, stream_out=None, reply_timeout_s=None,
-        clock=time.monotonic, sleep=time.sleep) -> int:
+        clock=time.monotonic, sleep=time.sleep, canlog_out=None) -> int:
     """Runs the steps against port (write(bytes), readline() -> bytes with a
     short timeout). Returns the number of failed commands."""
     timeout = reply_timeout_s or float(script.get("reply_timeout_s", 2.0))
@@ -57,8 +58,12 @@ def run(script: dict, port, log=print, stream_out=None, reply_timeout_s=None,
     t0 = clock()
 
     def handle_line(raw: bytes):
-        line = raw.decode(errors="replace").strip()
+        line = raw.decode("ascii", errors="backslashreplace").strip()
         if not line:
+            return None
+        if line[0] == "(":  # canlog frame, candump -l format
+            if canlog_out:
+                canlog_out.write(line + "\n")
             return None
         if line[0].isdigit() or line.startswith("t_ms,"):
             if stream_out:
@@ -69,11 +74,12 @@ def run(script: dict, port, log=print, stream_out=None, reply_timeout_s=None,
     for st in script["steps"]:
         at = float(st["at"])
         while clock() - t0 < at:
-            line = handle_line(port.readline())  # keep draining while waiting
+            raw = port.readline()  # keep draining while waiting
+            line = handle_line(raw)
             if line:
                 log(f"{clock() - t0:8.3f}  < {line}")
             remaining = at - (clock() - t0)
-            if remaining > 0.05:
+            if not raw and remaining > 0.05:  # sleep only when the port is idle
                 sleep(min(0.01, remaining))
         cmd = str(st["cmd"]).strip()
         log(f"{clock() - t0:8.3f}  > {cmd}")
@@ -96,6 +102,29 @@ def run(script: dict, port, log=print, stream_out=None, reply_timeout_s=None,
     return failures
 
 
+class LinePort:
+    """Line reader over a pyserial port that reads whatever is waiting in one
+    call. pyserial's own readline reads a byte at a time, too slow for canlog
+    at several hundred lines a second."""
+
+    def __init__(self, port):
+        self.port = port
+        self.buf = b""
+        self.lines = []
+
+    def readline(self) -> bytes:
+        if not self.lines:
+            chunk = self.port.read(self.port.in_waiting or 1)  # waits up to the timeout
+            if chunk:
+                parts = (self.buf + chunk).split(b"\n")
+                self.buf = parts.pop()
+                self.lines = [p + b"\n" for p in parts]
+        return self.lines.pop(0) if self.lines else b""
+
+    def write(self, data: bytes):
+        return self.port.write(data)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("script")
@@ -104,6 +133,7 @@ def main(argv=None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="print the schedule only")
     ap.add_argument("--log", help="also write the console transcript here")
     ap.add_argument("--stream-out", help="write streamed CSV lines here")
+    ap.add_argument("--canlog-out", help="write canlog frames here (candump -l format)")
     a = ap.parse_args(argv)
 
     script = load_script(open(a.script).read())
@@ -120,16 +150,25 @@ def main(argv=None) -> int:
 
     logf = open(a.log, "w") if a.log else None
     streamf = open(a.stream_out, "w") if a.stream_out else None
+    canlogf = open(a.canlog_out, "w") if a.canlog_out else None
 
     def log(msg):
         print(msg)
         if logf:
             logf.write(msg + "\n")
 
-    with serial.Serial(port_name, a.baud or int(script.get("baud", 921600)), timeout=0.02) as port:
+    # Open with DTR and RTS released: asserting them on open can pulse the
+    # ESP32's auto-reset circuit and reboot the simulator mid-test.
+    port = serial.Serial(baudrate=a.baud or int(script.get("baud", 921600)), timeout=0.02)
+    port.port = port_name
+    port.dtr = False
+    port.rts = False
+    port.open()
+    with port:
         port.reset_input_buffer()
         try:
-            failures = run(script, port, log, streamf)
+            failures = run(script, LinePort(port), log, streamf, canlog_out=canlogf)
+            log(f"done, {failures} command(s) failed")
         except ScriptError as e:
             log(f"stopped: {e}")
             return 1
@@ -138,7 +177,8 @@ def main(argv=None) -> int:
                 logf.close()
             if streamf:
                 streamf.close()
-    log(f"done, {failures} command(s) failed")
+            if canlogf:
+                canlogf.close()
     return 1 if failures else 0
 
 

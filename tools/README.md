@@ -13,7 +13,7 @@ python selftest.py          # needs g++ on PATH; checks every tool against synth
 | `extract_params.py` | R1 and R2 logs (or R3 for the implement) | `params.json` with `J`, `Tc`, `b`, `c`, and a fit plot |
 | `make_profile.py` | R5, R6 or R7 log, plus `params.json` | Profile CSV for `/profiles/` on the SD card |
 | `compare_runs.py` | A tractor log and a bench log of the same scenario | Metrics table and overlay plot |
-| `run_script.py` | YAML script and the simulator's serial port | Timed console commands; `scripts/baler_example.yaml` is an example |
+| `run_script.py` | YAML script and the simulator's serial port | Timed console commands. `--stream-out` saves the CSV stream and `--canlog-out` the bus log (`canlog 1`, candump format, readable by `loglib`). Bench scripts are in `scripts/` |
 
 ## Typical flow
 
