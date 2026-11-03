@@ -27,15 +27,15 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | Milestone | State |
 | --- | --- |
 | M1 codec and native tests | Done |
-| M2 CAN bring-up | Built, not bench tested |
-| M3 plant, closed loop | Built, not bench tested |
-| M4 Zombie `gov-logging` | Built, pushed, not bench tested. Host tests pass, firmware builds. |
+| M2 CAN bring-up | Bench tested (3 Nov 2026) |
+| M3 plant, closed loop | Bench tested (3 Nov 2026). Bench setup needs `BMS_Mode` 0; see `docs/bench/M3_*`. |
+| M4 Zombie `gov-logging` | Flashed to the bench Zombie, bench procedure not yet run. Host tests pass. |
 | M5 loads, presets, console, telemetry | Built, unit tested, not bench tested |
 | M6 SD profiles and PC tools | Tools done and self-tested; SD replay not bench tested |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** Ben runs the bench procedures in order: `docs/bench/M2_*`, `M3_*`, `M4_*`, `M5_*`, `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** Ben runs the remaining bench procedures in order: `docs/bench/M4_*`, `M5_*`, `M6_*`. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 

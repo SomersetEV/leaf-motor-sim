@@ -59,7 +59,9 @@ class Log:
 # ---- readers ----------------------------------------------------------------
 
 def _read_savvycan(path: Path) -> Frames:
-    df = pd.read_csv(path, dtype=str, skipinitialspace=True)
+    # SavvyCAN ends each data row with a comma; index_col=False stops pandas
+    # taking the first column as the index and shifting the rest left
+    df = pd.read_csv(path, dtype=str, skipinitialspace=True, index_col=False)
     cols = {c.strip().lower(): c for c in df.columns}
     tcol = cols.get("time stamp") or cols.get("timestamp")
     if tcol is None or "id" not in cols:

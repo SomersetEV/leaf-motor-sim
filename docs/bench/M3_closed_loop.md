@@ -36,7 +36,8 @@ Start from the tractor's parameter file and the M2 settings, then set:
 
 | Parameter | Value | Why |
 | --- | --- | --- |
-| `udcsw` | 300 | Below the simulated 360 V, so precharge completes |
+| `BMS_Mode` | 0 (Off) | With `ShuntType` 0, SimpBMS, LeafBms and Kangoo overwrite `udcsw`. SimpBMS sets it to 1000 when it has no BMS data, so precharge fails. Restore the tractor value before going back on the tractor. |
+| `udcsw` | 300 | Below the simulated 360 V, so precharge completes. Set it after `BMS_Mode`, because the BMS code leaves 1000 behind. |
 | `udcmin` | 250 | Below 360 V, so there is no voltage derate |
 | `udclim` | 400 | Above 360 V |
 | `revlim` | 1500 to start, then the tractor's working value | Governor setpoint |
@@ -52,7 +53,7 @@ pio run -e tcan485 -t upload
 pio device monitor -e tcan485
 ```
 
-The banner should read `leaf-motor-sim M3 closed loop`. Type `params` to confirm the model values above.
+The banner should read `leaf-motor-sim M3 closed loop`, or `leaf-motor-sim M6` on a later build, which needs no reflash. Type `params` to confirm the model values above. On the M6 build, `preset` must read `-` (no load preset).
 
 ## 4. Test steps
 
@@ -64,7 +65,7 @@ The banner should read `leaf-motor-sim M3 closed loop`. Type `params` to confirm
 3. **Release lets speed fall.** Release the throttle. Speed falls smoothly to zero in roughly 9 s from 2000 rpm. If the Zombie applies regen, it falls faster. Speed must not go negative or oscillate around zero.
 4. **Governor holds `revlim`.** Press the throttle fully. Speed rises, overshoots, then settles near `revlim`. In `stat`, `t_req` drops back as the governor takes over. Hold for 30 s.
 5. **Reverse (optional).** Select reverse and press the throttle. Speed should go negative, unless `reversemotor` flips it.
-6. **Timeout.** With the shaft turning, switch the Zombie off or leave run mode. Within 100 ms, `rx_timeout=1` and `t_req=0`, and the speed coasts down.
+6. **Timeout.** With the shaft turning, switch the Zombie off or leave run mode. 100 to 110 ms after the last `0x1D4` (the 100 ms timeout plus up to one tick), `t_req=0` and `rx_timeout=1`, and the speed coasts down.
 
 Throughout, `overruns` and `out_of_tol` stay at 0 and `jitter_1s_us` stays below 500.
 
@@ -72,7 +73,10 @@ Throughout, `overruns` and `out_of_tol` stay at 0 and `jitter_1s_us` stays below
 
 | Symptom | Likely cause |
 | --- | --- |
-| Zombie stays in precharge, then shows `MOD_PCHFAIL` | `udcsw` above 360, `udclim` below 360, or the throttle is not released. Check `udc` = 360 in the web interface. |
+| Zombie stays in precharge, then shows `MOD_PCHFAIL` | `udcsw` above 360, `udclim` below 360, or the throttle is not released. Check `udc` = 360 in the web interface. The `status` bits say which: 4 `udc` below `udcsw`, 8 `udc` at `udclim`, 64 throttle pressed. |
+| `udcsw` reads 1000 | `BMS_Mode` is SimpBMS with no BMS on the bench. Set `BMS_Mode` to 0, then `udcsw` to 300. Leave PchFail by switching ignition off. |
+| Throttle counted as pressed at rest (`status` bit 64) | `potmin` equals the resting `pot` value, so ADC noise crosses it. Set `potmin` 50 to 100 counts above rest. |
+| `OVERVOLTAGE` in the error list | The Zombie's own `udc > udclim` check, not the inverter. Each error is listed once per boot and stays until reboot, so it may be old. Reboot and check that it does not return. |
 | `rx1d4` stays at 0 in run mode | `InverterCan` is set to the other bus. |
 | `rej1d4` increasing | Corrupted frames. Check wiring and termination, and send me a SavvyCAN capture. |
 | Speed rises with the throttle released | The Zombie is still sending positive torque. Check `req_raw` in `stat` and the Zombie's `potnom`. |

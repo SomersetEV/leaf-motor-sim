@@ -66,10 +66,12 @@ If it prints `err CAN driver failed to start`, stop and send me the serial outpu
 | `tx_failed` | 0, or not increasing |
 | `can` | `running` |
 | `tec`, `rec` | 0, or low single digits |
-| `rx50b` | Increasing (the Zombie is awake on the bus) |
+| `rx50b`, `rx_other` | 0 until the Zombie is in run or charge mode. It sends nothing on the inverter bus before that (`NissLeafMng::Task100Ms`). |
 | `rx_timeout` | 1 unless the Zombie is in run mode |
 
-If the Zombie reaches run mode (`opmode` = Run), `rx1d4` starts increasing, `rx_timeout` goes to 0, and `rej1d4` should stay at 0. Getting this far is a bonus. It is not required for M2.
+Out of run mode, the only sign of the Zombie on the bus is that the frames are acknowledged: `tec` stays at 0 and `tx_failed` does not rise. The Zombie's `udc`, `speed` and temperatures confirm that it decodes them.
+
+If the Zombie reaches run mode (`opmode` = Run), `rx50b` and `rx1d4` start increasing, `rx_timeout` goes to 0, and `rej1d4` should stay at 0. Getting this far is a bonus. It is not required for M2.
 
 ## 5. If it fails
 
@@ -78,6 +80,6 @@ If the Zombie reaches run mode (`opmode` = Run), `rx1d4` starts increasing, `rx_
 | No `0x1DA` in SavvyCAN, `tx_failed` rising, `tec` 128 or above | Nothing is acknowledging the frames: Zombie off, CAN H/L swapped, wrong bus, or termination missing. |
 | `can=bus_off`, `bus_off` count rising | Wiring fault or wrong bit rate. The firmware recovers automatically. |
 | Frames in SavvyCAN but the Zombie shows `udc` 0 | `ShuntType` is not 0, or `InverterCan` is set to the other bus. |
-| `rx50b` stays at 0 although the Zombie is on | The simulator receives nothing: check the CAN pins (TX 27 / RX 26, from the telematics firmware). |
+| `rx50b` stays at 0 with the Zombie in run mode | The simulator receives nothing: check the CAN pins (TX 27 / RX 26, from the telematics firmware). |
 
 Send back: a SavvyCAN capture of at least one minute (CSV), a `stat` line taken at the end, and a screenshot of the Zombie spot values.
