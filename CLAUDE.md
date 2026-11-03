@@ -36,7 +36,7 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** `topper.json` (test only) to come off the sim's SD card. Then M7 tractor captures. Meanwhile, a speed-noise check at `govFlt` 2 against 4 (`set noise <rpm>` adds noise to the reported speed only). SD transfer over serial (`sd ls`/`sd get`, `tools/sd_pull.py`) is parked in a git stash, because `sd ls` rebooted the sim. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** `topper.json` (test only) to come off the sim's SD card. Then M7 tractor captures. `set noise <rpm>` adds noise to the reported speed only; `sweep.py` sets it per run with `sim:`. SD transfer over serial (`sd ls`/`sd get`, `tools/sd_pull.py`) is parked in a git stash, because `sd ls` rebooted the sim. Fix whatever they turn up before building anything further. When tractor logs arrive, follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Phase 2 (planned, do not start yet):** speed-mode throttle, plan sections 13 and 14, milestones M10–M13. Starts only after M9 is signed off and the sim is working on the bench. It changes Zombie control logic on a new `speed-mode` branch, so the logging-only rule above does not apply to it, but confirm scope with Ben before starting. Next free Zombie parameter IDs are still 164 and 2130 unless Phase 1 uses them.
 
@@ -85,7 +85,7 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 | V2 motor 280 Nm, 80 kW | Open: Ben to confirm the motor and inverter generation |
 | V3 reported torque layout in `0x1DA` | Open: behind `SIM_REPORT_TORQUE`, default off |
 | V4 CAN pins | Settled |
-| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Not yet tried with speed noise. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
+| V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Speed noise (`set noise` up to 15 rpm, Gaussian) does not change that: at shift 2 it adds about 2 Nm RMS of tick-to-tick torque jitter at no-load, and true-shaft ripple stays 242–268 rpm against 322 at shift 4. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
 | V6 raw 10 ms CAN logging on the tractor | Open |
 | V7 run-mode inputs for the vehicle class | Open: needs the tractor's `Vehicle` parameter, then read its `Ready()`/`Start()` in Stm32-vcu |
 

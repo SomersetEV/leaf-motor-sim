@@ -9,6 +9,10 @@ error. GovLog is turned on for the sweep (it is needed for scoring) and
 restored with the gains. Nothing is saved on the Zombie: a power cycle
 restores its setup.
 
+A set may also hold `sim:` model parameters for the simulator, such as
+`sim: {noise: 5}` for speed noise on 0x1DA. Presets reset the model, so they
+are applied again after every load change, and put back by preset noload.
+
 The pedal must be held at a fixed position for the whole sweep (a clamp or a
 fixed pot). Each row reports the mean pedal position and the share of time
 the governor was the binding limit, so a slipped pedal shows up.
@@ -26,6 +30,7 @@ Example sweep.yaml:
       - {govKp: 11}
       - {govKp: 14}
       - {govKp: 11, govKi: 2}
+      - {govKp: 11, sim: {noise: 5}}   # simulator 'set' parameters
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from run_script import LinePort
 ZPARAMS = ("revlim", "govKp", "govKi", "govKd", "govImax", "govFlt")  # gains a set may change
 POT_USER = "GOV_Speed_4A0.PotUser"
 SIM_TREQ = "SIM_Fast_4B0.TorqueReq"
+SIM_SPEED = "SIM_Fast_4B0.ModelSpeed"  # shaft speed before any reported-speed noise
 
 
 class SweepError(Exception):
@@ -106,7 +112,7 @@ def load_sweep(text: str) -> dict:
     if not (("preset" in load) ^ ("profile" in load)):
         raise SweepError("load needs exactly one of 'preset' or 'profile'")
     for i, g in enumerate([s.get("base") or {}] + list(s["sets"])):
-        bad = [k for k in g if k not in ZPARAMS]
+        bad = [k for k in g if k not in ZPARAMS and k != "sim"]
         if bad:
             raise SweepError(f"set {i}: not a governor parameter: {', '.join(bad)}")
     return s
@@ -118,6 +124,11 @@ def apply_load(con: Console, load: dict):
     else:
         con.cmd(f"profile load {load['profile']}", timeout_s=30.0)
         con.cmd("profile start")
+
+
+def apply_sim(con: Console, sim: dict):
+    for n, v in sim.items():
+        con.cmd(f"set {n} {v}")
 
 
 def clear_load(con: Console, load: dict):
@@ -161,6 +172,8 @@ def score(bus_log: Path, revlim: float) -> dict:
     m = {"revlim_rpm": revlim}
     m["noload_peak_rpm"] = float(v[nl_all].max()) if nl_all.any() else float("nan")
     m["noload_p2p_rpm"] = float(np.ptp(v[nl])) if nl.any() else float("nan")
+    if log.has(SIM_TREQ) and nl.any():
+        m["noload_treq_sd_nm"] = float(np.nanstd(g[SIM_TREQ].to_numpy(dtype=float)[nl]))
     if ld.any():
         tl, vl = t[ld], v[ld]
         period = mt.dominant_period_s(tl, vl)
@@ -173,6 +186,9 @@ def score(bus_log: Path, revlim: float) -> dict:
         if log.has(SIM_TREQ):
             treq = g[SIM_TREQ].to_numpy(dtype=float)[ld]
             m["treq_stroke_p2p_nm"] = _stroke_p2p(tl, treq, period)
+        if log.has(SIM_SPEED):
+            ws = np.abs(g[SIM_SPEED].to_numpy(dtype=float))[ld]
+            m["model_stroke_p2p_rpm"] = _stroke_p2p(tl, ws, period)
     m["peak_integral_pct"] = mt.peak_abs(g[loglib.GOV_INT]) if log.has(loglib.GOV_INT) else float("nan")
     m["pedal_pct"] = float(np.nanmean(g[POT_USER].to_numpy(dtype=float)[ld])) if log.has(POT_USER) else float("nan")
     m["binding_frac"] = (float(np.nanmean(g[loglib.GOV_BINDING].to_numpy(dtype=float)[ld] > 0.5))
@@ -185,8 +201,10 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
     load = s["load"]
     settle_s = float(s.get("settle_s", 8.0))
     run_s = float(s.get("run_s", 30.0))
-    base = s.get("base") or {}
-    names = sorted({k for g in [base] + list(s["sets"]) for k in g})
+    base = dict(s.get("base") or {})
+    base_sim = base.pop("sim", None) or {}
+    names = sorted({k for g in [base] + list(s["sets"]) for k in g if k != "sim"})
+    sim_names = sorted({k for g in [{"sim": base_sim}] + list(s["sets"]) for k in (g.get("sim") or {})})
 
     con.cmd("stream 0")
     con.cmd("canlog 0")
@@ -196,9 +214,12 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
     try:
         con.cmd("zset GovLog 1")  # governor frames 0x4A0-0x4A3, needed for scoring
         for i, overrides in enumerate(s["sets"], 1):
+            overrides = dict(overrides)
+            sim = {**base_sim, **(overrides.pop("sim", None) or {})}
             gains = {**base, **overrides}
-            log(f"set {i}/{len(s['sets'])}: {gains}")
+            log(f"set {i}/{len(s['sets'])}: {gains}" + (f" sim {sim}" if sim else ""))
             clear_load(con, load)
+            apply_sim(con, sim)
             con.pump(NOLOAD_TAIL_S)  # let the previous load's removal die away
             bus = out / f"run_{i:02d}_bus.log"
             with open(bus, "w") as f:
@@ -209,12 +230,14 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
                     con.cmd(f"zset {n} {v}")
                 con.pump(settle_s)  # no-load phase, scored for stability
                 apply_load(con, load)
+                apply_sim(con, sim)
                 con.pump(run_s)
                 con.cmd("canlog 0")
                 con.pump(0.2)  # lines already queued
                 con.canlog = None
             clear_load(con, load)
-            row = {"set": i, **{n: gains.get(n, original[n]) for n in names}}
+            row = {"set": i, **{n: gains.get(n, original[n]) for n in names},
+                   **{f"sim_{n}": sim.get(n, "") for n in sim_names}}
             try:
                 row.update(score(bus, float(gains.get("revlim", original["revlim"]))))
             except Exception as e:  # keep the sweep going; the log is kept
@@ -224,9 +247,14 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
                     "this run is not meaningful (is the pedal held?)")
             rows.append(row)
             log("    " + ", ".join(f"{k}={v:.3g}" if isinstance(v, float) else f"{k}={v}"
-                                   for k, v in row.items() if k not in names and k != "set"))
+                                   for k, v in row.items() if k not in names and k != "set" and not k.startswith("sim_")))
     finally:
         con.canlog = None
+        if sim_names:
+            try:
+                clear_load(con, load)  # preset noload puts the model back
+            except SweepError as e:
+                log(f"WARNING: could not reset the model: {e}")
         for n, v in original.items():
             try:
                 con.cmd(f"zset {n} {v}")
