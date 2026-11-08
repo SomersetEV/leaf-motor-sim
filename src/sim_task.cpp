@@ -158,7 +158,12 @@ static void sim_task(void *) {
         if (s_params.noise_rpm > 0.0f) rpm_reported += s_params.noise_rpm * speed_noise.next();
 
         // 4. Inverter status, then fast telemetry
-        leafcodec::encode_1da(s_params.udc_v, rpm_reported, s_inv_fault, b);
+#if SIM_REPORT_TORQUE
+        float t_reported = model.t_motor_nm();  // after the envelope and lag
+#else
+        float t_reported = 0.0f;
+#endif
+        leafcodec::encode_1da(s_params.udc_v, rpm_reported, t_reported, s_inv_fault, b);
         can_send(ID_LEAF_INV_STATUS, b, 8);
         simproto::pack_4b0(rpm, t_req, model.t_motor_nm(), model.t_load_nm(), b);
         can_send(ID_SIM_FAST, b, 8);

@@ -74,12 +74,15 @@ constexpr uint32_t LOAD_NOISE_SEED     = 0x10ADu;
 
 // --- Default model parameters (placeholders until section 9 fits) ---------
 
-// VERIFY (plan section 12, V1): torque request scale in Nm per 0x1D4 bit.
+// Torque request scale in Nm per 0x1D4 bit. Plan section 12, V1, settled
+// 8 Nov 2026 from tractor logs: the inverter's reported torque is 0.249-0.250
+// Nm per request bit, and DC power from the shunt agrees at 84-86 % efficiency.
 constexpr float K_T_DEFAULT = 0.25f;
 
-// VERIFY (plan section 12, V3): reported torque layout in 0x1DA bytes 2-3.
-// Off until confirmed from a tractor capture.
-#define SIM_REPORT_TORQUE 0
+// Fill the reported torque in 0x1DA bytes 2-3 with the model's motor torque.
+// Plan section 12, V3, settled 8 Nov 2026: the layout tracks the request in
+// tractor logs (r = 0.998). The Zombie does not read it; set 0 to send zeros.
+#define SIM_REPORT_TORQUE 1
 
 // Plant (plan section 6). Placeholders until the identification runs.
 constexpr float J_DEFAULT_KGM2   = 0.30f;  // no-load acceleration run

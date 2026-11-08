@@ -106,7 +106,7 @@ struct Sim {
         float t_req = raw * o.kt;
         for (int i = 0; i < 10; i++) model.substep(t_req, lo.tick, 0.001f);
 
-        leafcodec::encode_1da(360.0f, model.rpm(), false, b);
+        leafcodec::encode_1da(360.0f, model.rpm(), model.t_motor_nm(), false, b);
         frame(out, t_us + 300, 0x1DA, b);
         simproto::pack_4b0(model.rpm(), t_req, model.t_motor_nm(), model.t_load_nm(), b);
         frame(out, t_us + 500, 0x4B0, b);

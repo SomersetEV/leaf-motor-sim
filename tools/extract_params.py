@@ -14,7 +14,9 @@ filter before fitting, so torque steps do not bias the derivative.
 Limits, stated in the output too:
   * From speed and torque request alone only J / kT is identifiable. That
     ratio sets the loop behaviour, so the bench stays valid; absolute values
-    need reported torque (0x1DA, plan V3) or DC power from a shunt.
+    need reported torque (0x1DA, plan V3) or DC power from a shunt. Both
+    confirmed kT = 0.25 Nm per bit in tractor logs (plan V1), so with the
+    default --kt the absolute values hold too.
 """
 
 from __future__ import annotations
@@ -31,7 +33,8 @@ import loglib
 import simmodel as sm
 
 NOTE = ("Only J/kT is identifiable from speed and torque request alone; absolute J, Tc, b, c "
-        "scale with the assumed kT (plan V1). The ratio is what sets loop behaviour.")
+        "scale with kT, confirmed at 0.25 Nm per bit from tractor logs (plan V1). "
+        "The ratio is what sets loop behaviour.")
 
 
 def fit_columns(log: loglib.Log, m: sm.MotorParams, cutoff_hz: float, w_min: float,

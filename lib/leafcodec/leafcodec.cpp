@@ -39,10 +39,13 @@ Cmd1D4 decode_1d4(const uint8_t b[8], float k_t) {
     return c;
 }
 
-void encode_1da(float udc_v, float rpm, bool inv_error, uint8_t out[8]) {
+void encode_1da(float udc_v, float rpm, float torque_nm, bool inv_error, uint8_t out[8]) {
     memset(out, 0, 8);
     out[0] = (uint8_t)lroundf(clampf(udc_v, 0.0f, UDC_LIMIT_V) / 2.0f);
-    // bytes 2..3: reported torque, left zero until SIM_REPORT_TORQUE (plan V3)
+    // bytes 2..3: reported torque, 11-bit two's complement at 0.5 Nm (plan V3)
+    int16_t tq = (int16_t)lroundf(clampf(torque_nm, TORQUE_REP_MIN_NM, TORQUE_REP_MAX_NM) * 2.0f);
+    out[2] = (uint8_t)(((uint16_t)tq >> 8) & 0x07);
+    out[3] = (uint8_t)(tq & 0xFF);
     int16_t raw = (int16_t)lroundf(clampf(rpm, -RPM_LIMIT, RPM_LIMIT) * 2.0f);
     out[4] = (uint8_t)((uint16_t)raw >> 8);
     out[5] = (uint8_t)(raw & 0xFF);

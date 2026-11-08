@@ -138,7 +138,7 @@ static void test_1da_speed_every_rpm() {
     int16_t speed;
     bool err;
     for (int rpm = -16383; rpm <= 16383; rpm++) {
-        encode_1da(UDC_DEFAULT_V, (float)rpm, false, b);
+        encode_1da(UDC_DEFAULT_V, (float)rpm, 0.0f, false, b);
         zombie_decode_1da(b, v, speed, err);
         // The Zombie reads reverse speeds 1 rpm high; not compensated.
         int expected = rpm < 0 ? rpm + 1 : rpm;
@@ -151,10 +151,10 @@ static void test_1da_speed_clamped() {
     uint16_t v;
     int16_t speed;
     bool err;
-    encode_1da(UDC_DEFAULT_V, 20000.0f, false, b);
+    encode_1da(UDC_DEFAULT_V, 20000.0f, 0.0f, false, b);
     zombie_decode_1da(b, v, speed, err);
     TEST_ASSERT_EQUAL_INT16(16383, speed);
-    encode_1da(UDC_DEFAULT_V, -20000.0f, false, b);
+    encode_1da(UDC_DEFAULT_V, -20000.0f, 0.0f, false, b);
     zombie_decode_1da(b, v, speed, err);
     TEST_ASSERT_EQUAL_INT16(-16382, speed);
 }
@@ -164,20 +164,64 @@ static void test_1da_voltage_and_error() {
     uint16_t v;
     int16_t speed;
     bool err;
-    encode_1da(360.0f, 0.0f, false, b);
+    encode_1da(360.0f, 0.0f, 0.0f, false, b);
     zombie_decode_1da(b, v, speed, err);
     TEST_ASSERT_EQUAL_UINT16(360, v);
     TEST_ASSERT_FALSE(err);
     TEST_ASSERT_EQUAL_HEX8(0, b[2]);
     TEST_ASSERT_EQUAL_HEX8(0, b[3]);
 
-    encode_1da(360.0f, 0.0f, true, b);
+    encode_1da(360.0f, 0.0f, 0.0f, true, b);
     zombie_decode_1da(b, v, speed, err);
     TEST_ASSERT_TRUE(err);
 
-    encode_1da(1000.0f, 0.0f, false, b);
+    encode_1da(1000.0f, 0.0f, 0.0f, false, b);
     zombie_decode_1da(b, v, speed, err);
     TEST_ASSERT_EQUAL_UINT16(510, v);
+}
+
+// Reported torque as a real Leaf inverter sends it (plan V3, checked against
+// tractor logs on 8 Nov 2026): 11-bit signed, 0.5 Nm, ((b[2] & 7) << 8) | b[3].
+// The Zombie has no decoder for it; this one follows tools/dbc/leaf_sim.dbc.
+static float decode_reported_torque(const uint8_t *b) {
+    int16_t raw = (int16_t)(((b[2] & 0x07) << 8) | b[3]);
+    if (raw & 0x400) raw -= 0x800;
+    return raw * 0.5f;
+}
+
+static void test_1da_reported_torque_every_step() {
+    uint8_t b[8];
+    uint16_t v;
+    int16_t speed;
+    bool err;
+    for (int half = -1024; half <= 1023; half++) {
+        float nm = half * 0.5f;
+        encode_1da(360.0f, -1234.0f, nm, false, b);
+        float got = decode_reported_torque(b);
+        TEST_ASSERT_EQUAL_FLOAT(nm, got);
+        TEST_ASSERT_EQUAL_HEX8(0, b[2] & 0xF8);
+        // Torque bits leave everything the Zombie reads unchanged
+        zombie_decode_1da(b, v, speed, err);
+        TEST_ASSERT_EQUAL_UINT16(360, v);
+        TEST_ASSERT_EQUAL_INT16(-1233, speed);
+        TEST_ASSERT_FALSE(err);
+    }
+}
+
+static void test_1da_reported_torque_clamped_and_rounded() {
+    uint8_t b[8];
+    encode_1da(360.0f, 0.0f, 1000.0f, false, b);
+    float hi = decode_reported_torque(b);
+    TEST_ASSERT_EQUAL_FLOAT(511.5f, hi);
+    encode_1da(360.0f, 0.0f, -1000.0f, false, b);
+    float lo = decode_reported_torque(b);
+    TEST_ASSERT_EQUAL_FLOAT(-512.0f, lo);
+    encode_1da(360.0f, 0.0f, 100.2f, false, b);
+    float r1 = decode_reported_torque(b);
+    TEST_ASSERT_EQUAL_FLOAT(100.0f, r1);
+    encode_1da(360.0f, 0.0f, -100.3f, false, b);
+    float r2 = decode_reported_torque(b);
+    TEST_ASSERT_EQUAL_FLOAT(-100.5f, r2);
 }
 
 // ---- 0x55A ----------------------------------------------------------------
@@ -204,6 +248,8 @@ int main(int, char **) {
     RUN_TEST(test_1da_speed_every_rpm);
     RUN_TEST(test_1da_speed_clamped);
     RUN_TEST(test_1da_voltage_and_error);
+    RUN_TEST(test_1da_reported_torque_every_step);
+    RUN_TEST(test_1da_reported_torque_clamped_and_rounded);
     RUN_TEST(test_55a_temperatures);
     return UNITY_END();
 }

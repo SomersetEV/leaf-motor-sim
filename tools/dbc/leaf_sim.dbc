@@ -116,12 +116,12 @@ CM_ BO_ 282 "Leaf VCM gear and on/off, sent by the Zombie every 10 ms in run mod
 CM_ SG_ 282 Gear "0x4E drive, 0x2E reverse, 0x01 park.";
 CM_ SG_ 282 OnOff "0x40 car on, 0x80 off (charging).";
 CM_ BO_ 468 "Leaf VCM torque request, sent by the Zombie every 10 ms in run mode only.";
-CM_ SG_ 468 TorqueRequestRaw "Counts. Zombie: raw = torquePercent * 2047 / 100 (LeafINV::SetTorque). Nm = raw * kT; kT 0.25 Nm is an assumption, VERIFY (plan section 12, V1). Decoded Nm is in 0x4B0 from M5.";
+CM_ SG_ 468 TorqueRequestRaw "Counts. Zombie: raw = torquePercent * 2047 / 100 (LeafINV::SetTorque). Nm = raw * kT; kT 0.25 Nm, confirmed from tractor logs (plan section 12, V1). Decoded Nm is in 0x4B0 from M5.";
 CM_ SG_ 468 HVStatus "7 HV on, 3 precharge, 2 off.";
 CM_ SG_ 468 CRC "Nissan CRC-8, polynomial 0x85, over bytes 0-6.";
 CM_ BO_ 474 "Leaf inverter status, sent by the simulator every 10 ms from power-up.";
 CM_ SG_ 474 Voltage "Zombie uses it as udc only below 420 V with ShuntType = 0.";
-CM_ SG_ 474 ReportedTorque "Layout is an assumption, VERIFY (plan section 12, V3). Always 0 from the simulator.";
+CM_ SG_ 474 ReportedTorque "Layout confirmed from tractor logs (plan section 12, V3). The simulator sends its motor torque after the envelope and lag (SIM_REPORT_TORQUE). Not read by the Zombie.";
 CM_ SG_ 474 MotorSpeed "True signed speed. The Zombie decodes reverse speeds 1 rpm high.";
 CM_ SG_ 474 ErrorBits "Byte 6 bits 4-7. Zombie: error when (byte6 & 0xB0) != 0. Simulator fault sets bit 4.";
 CM_ BO_ 1370 "Leaf inverter temperatures, sent by the simulator every 100 ms. Degrees Fahrenheit on the bus.";

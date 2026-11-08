@@ -19,6 +19,8 @@ constexpr uint8_t HV_ON        = 0x07;
 
 constexpr float RPM_LIMIT     = 16383.0f; // 0x1DA speed range, 0.5 rpm per bit
 constexpr float UDC_LIMIT_V   = 510.0f;   // 0x1DA byte 0, 2 V per bit
+constexpr float TORQUE_REP_MAX_NM = 511.5f;  // 0x1DA reported torque, 11-bit signed,
+constexpr float TORQUE_REP_MIN_NM = -512.0f; // 0.5 Nm per bit
 
 // CRC over bytes 0..6 with byte 7 treated as zero, as the Zombie computes it.
 // Does not modify the frame.
@@ -34,10 +36,13 @@ struct Cmd1D4 {
 
 Cmd1D4 decode_1d4(const uint8_t b[8], float k_t);
 
-// Inverter status: bus voltage, motor speed and error flag. Speed is encoded
-// as the real inverter does; the Zombie's 1 rpm offset on reverse speeds is
-// not compensated.
-void encode_1da(float udc_v, float rpm, bool inv_error, uint8_t out[8]);
+// Inverter status: bus voltage, reported torque, motor speed and error flag.
+// Speed is encoded as the real inverter does; the Zombie's 1 rpm offset on
+// reverse speeds is not compensated. Reported torque goes in the 11 bits
+// ((b[2] & 0x07) << 8) | b[3], confirmed from tractor logs (plan V3); pass 0
+// to leave them clear. The Zombie does not read it. The real inverter also
+// sets bits 3-4 of byte 2 when running; those are left clear.
+void encode_1da(float udc_v, float rpm, float torque_nm, bool inv_error, uint8_t out[8]);
 
 // Motor and inverter temperatures, sent on the bus in degrees Fahrenheit.
 void encode_55a(float motor_c, float inv_c, uint8_t out[8]);

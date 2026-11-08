@@ -180,7 +180,7 @@ If no valid `0x1D4` arrives for 100 ms, the model applies zero motor torque and 
 ```cpp
 b[0] = (uint8_t)lroundf(udc_volts / 2.0f);   // Zombie: voltage = b[0] * 2
 b[1] = 0;
-b[2] = 0;  b[3] = 0;                         // reported torque, see below
+b[2] = (tq >> 8) & 0x07;  b[3] = tq & 0xFF; // reported torque, see below
 int16_t raw = (int16_t)lroundf(rpm * 2.0f);  // 0.5 rpm per bit, signed, clamp to +/-16383 rpm
 b[4] = (uint8_t)(raw >> 8);
 b[5] = (uint8_t)(raw & 0xFF);
@@ -192,7 +192,7 @@ The Zombie decodes speed as `(b[4] << 7) | (b[5] >> 1)` and subtracts `0x7FFF` w
 
 The Zombie does not check a counter or CRC on `0x1DA`, and has no receive timeout for it.
 
-A real inverter also reports its actual torque in `0x1DA`. The believed layout is 11-bit signed at 0.5 Nm per bit in `((b[2] & 0x07) << 8) | b[3]`. **VERIFY** this from a tractor capture before filling it. Keep it behind a `SIM_REPORT_TORQUE` config flag, default off.
+A real inverter also reports its actual torque in `0x1DA`, 11-bit signed at 0.5 Nm per bit in `((b[2] & 0x07) << 8) | b[3]`. Tractor logs of 7 Nov 2026 confirm the layout (V3, settled), so the simulator fills it with the model's motor torque after the envelope and lag. The `SIM_REPORT_TORQUE` config flag, default on, can turn it off. The Zombie does not read these bits. The real inverter also sets bits 3 and 4 of `b[2]` while running; the simulator leaves them clear.
 
 `0x55A`, DLC 8, every 100 ms:
 
@@ -603,15 +603,15 @@ The Zombie's SDO server is node 3 on CAN1 (`sdo.SetNodeId(3)` in `stm32_vcu.cpp`
 
 ## 12. Open items and risks
 
-Seven assumptions need checking and three risks need watching. None blocks M1 to M6.
+Seven assumptions needed checking and three risks need watching. None blocks M1 to M6. V1, V3 and V4 are settled.
 
 ### To verify
 
 | # | Assumption | Why it matters | How to settle it |
 | --- | --- | --- | --- |
-| V1 | Torque request scale `kT` is 0.25 Nm per bit. | Sets where the motor envelope clips, which changes effective governor gain. | Compare request against reported torque in a tractor log, or against DC power from a shunt. |
+| V1 | Torque request scale `kT` is 0.25 Nm per bit. | Sets where the motor envelope clips, which changes effective governor gain. | **Settled 8 Nov 2026.** In two tractor logs (telematics `session_0011` and `0012`, 7 Nov), reported torque is 0.249–0.250 Nm per request bit. With `kT` 0.25, mechanical power is 84–86 % of the shunt's DC power when motoring, and DC power 78–82 % of mechanical on regen. |
 | V2 | Tractor motor limits are 280 Nm and 80 kW. | Same as V1. | Ben confirms which Leaf motor and inverter generation is fitted. |
-| V3 | Reported torque in `0x1DA` is 11-bit signed at 0.5 Nm in bytes 2 and 3. | Needed to fit torque lag and to separate inertia from `kT`. | Decode a tractor log and check it tracks the request. |
+| V3 | Reported torque in `0x1DA` is 11-bit signed at 0.5 Nm in bytes 2 and 3. | Needed to fit torque lag and to separate inertia from `kT`. | **Settled 8 Nov 2026.** In the same logs it tracks the request with r = 0.998, best aligned at 20–30 ms lag, consistent with `tau` 30 ms. The simulator now reports it (`SIM_REPORT_TORQUE`, default on). |
 | V4 | T-CAN485 CAN pins are TX 26 and RX 27. | Published pinouts disagree between board revisions. | Copy from Ben's working telematics firmware. |
 | V5 | Governor speed filter is meant to be shift 4. | The source comment says about 30 ms, the code gives about 160 ms. | Ben decides after bench runs with `govFlt` at 4, 3 and 2. |
 | V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | Ben confirms the logger, or uses a USB-CAN adapter with SavvyCAN in the cab. |

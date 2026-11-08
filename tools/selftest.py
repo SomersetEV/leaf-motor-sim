@@ -6,7 +6,7 @@ libraries, generates logs with known parameters, and checks:
   1. extract_params recovers J, Tc, b, c within 5 % (the plan's criterion)
   2. make_profile recovers a known baler load, and the profile it writes
      parses and replays through the firmware's profile code unchanged
-  3. loglib counts dropped 0x4A1 frames and reads candump logs
+  3. loglib counts dropped 0x4A1 frames and reads candump and telematics logs
   4. the metrics give the expected values on known signals
   5. compare_runs gives identical numbers for identical logs
   6. run_script sends commands on time and checks the replies
@@ -128,6 +128,27 @@ def test_loglib(exe, d):
     b = log.grid[loglib.SPEED].to_numpy()[:len(a)]
     ok = len(a) > 100 and np.allclose(a[:-5], b[:len(a) - 5], equal_nan=True)
     check("candump log decodes like SavvyCAN CSV", ok)
+
+    # The same frames as a telematics session file: boot-time ms rows, then
+    # the TIME_SYNC row and unix ms, with trip markers in between
+    tele = d / "session_0001.csv"
+    boot0_ms, unix_at_boot_ms, n_boot = 60_000, 1_794_000_000_000, 1500
+    with open(tele, "w") as f:
+        f.write("Time Stamp,ID,Extended,Bus,LEN,D1,D2,D3,D4,D5,D6,D7,D8\n")
+        for i, (t, cid, data) in enumerate(zip(sav.t[:3000], sav.can_id[:3000], sav.data[:3000])):
+            ms = boot0_ms + round(t * 1000)
+            if i == n_boot:
+                f.write(f"TIME_SYNC,{unix_at_boot_ms + ms},{ms},,,,,,,,,,\nTRIP_START,,,,,,,,,,,,\n")
+            stamp = ms if i < n_boot else unix_at_boot_ms + ms
+            f.write(f"{stamp},0x{cid:03X},false,0,{len(data)},"
+                    + ",".join(f"{x:02X}" for x in data.ljust(8, b"\0")) + "\n")
+        f.write("TRIP_END,30,-0.1,-0.03,50,50,40.0,,,,,,\n")
+    tlog = loglib.load(tele)
+    c = tlog.grid[loglib.SPEED].to_numpy()
+    ok = len(c) > 100 and np.allclose(c[:len(a) - 5], b[:len(a) - 5], atol=1.0, equal_nan=True)
+    start_ok = tlog.start_unix_s is not None and abs(tlog.start_unix_s - (unix_at_boot_ms + boot0_ms) / 1000) < 0.002
+    check("telematics log decodes like SavvyCAN CSV, across TIME_SYNC", ok and start_ok,
+          f"start {tlog.start_unix_s}")
 
 
 def test_metrics():

@@ -9,7 +9,7 @@ python selftest.py          # needs g++ on PATH; checks every tool against synth
 
 | Script | Input | Output |
 | --- | --- | --- |
-| `loglib.py` | SavvyCAN CSV or candump log (`-l` or `-ta`) | Named signals on a 10 ms grid; reports dropped `0x4A1` frames |
+| `loglib.py` | SavvyCAN CSV, candump log (`-l` or `-ta`), or telematics `session_XXXX.csv` (detected; `--format` overrides) | Named signals on a 10 ms grid; reports dropped `0x4A1` frames and gaps in each message's stream |
 | `extract_params.py` | R1 and R2 logs (or R3 for the implement) | `params.json` with `J`, `Tc`, `b`, `c`, and a fit plot |
 | `make_profile.py` | R5, R6 or R7 log, plus `params.json` | Profile CSV for `/profiles/` on the SD card |
 | `compare_runs.py` | A tractor log and a bench log of the same scenario | Metrics table and overlay plot |
@@ -28,8 +28,8 @@ python compare_runs.py r4_tractor.csv r4_bench.csv --plot r4.png --csv r4.csv
 
 ## What the fit can and cannot tell you
 
-- From speed and torque request alone, only J / kT is identifiable. That ratio sets loop behaviour, so the bench stays valid. Absolute values need reported torque (`0x1DA`, plan V3) or DC power from a shunt.
-- The motor model uses `--kt`, `--tau`, `--tmax` and `--pmax`. Their defaults are the plan's placeholders, which still need checking (plan V1 and V2).
+- From speed and torque request alone, only J / kT is identifiable. That ratio sets loop behaviour, so the bench stays valid. Reported torque (`0x1DA`) and shunt DC power in tractor logs have since confirmed kT = 0.25 Nm per bit (plan V1 and V3, 8 Nov 2026), so absolute values hold with the default `--kt`.
+- The motor model uses `--kt`, `--tau`, `--tmax` and `--pmax`. `--kt` is confirmed, and `--tau` 30 ms agrees with the 20–30 ms lag seen between request and reported torque. `--tmax` and `--pmax` are still placeholders (plan V2).
 - The torque-to-speed alignment depends on log timing, so `extract_params.py` tries delays of −2 to +2 ticks and keeps the best fit. The choice is recorded in `params.json`, and `make_profile.py` reuses it.
 - A profile is the load at the speed the tractor actually ran. When testing gains that move speed far from it, use `profile exp`.
 
@@ -39,4 +39,8 @@ python compare_runs.py r4_tractor.csv r4_bench.csv --plot r4.png --csv r4.csv
 - the fit recovers `J`, `Tc`, `b` and `c` within 5 % (the plan's criterion; it currently achieves about 0.1 %);
 - a generated baler profile matches the true load;
 - the profile parses and replays through the firmware's profile code;
-- dropped-frame counting, candump parsing, the metrics, and `run_script` timing.
+- dropped-frame counting, candump and telematics parsing, the metrics, and `run_script` timing.
+
+## Telematics logs
+
+The LilyGo telematics logger writes `session_XXXX.csv` with millisecond timestamps: ms since boot until the phone sets the clock, then unix ms, with a `TIME_SYNC` row giving the mapping. `loglib` converts the boot-time rows with it, so `t = 0` is the first frame and the summary prints the wall-clock start. Check the gap counts in the summary before fitting: as of November 2026 the logger keeps only about 15 % of frames in run mode (0.3 s bursts about every 2 s, plan V6), which is too little for `extract_params` or `make_profile`.

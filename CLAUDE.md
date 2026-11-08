@@ -43,9 +43,9 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 ## Build and test
 
 ```text
-pio test -e native             # 64 Unity tests for lib/
+pio test -e native             # 66 Unity tests for lib/
 pio run -e tcan485             # firmware (pioarduino "stable": Arduino-ESP32 3.3.0, IDF 5.5)
-python tools/selftest.py       # 21 checks; needs g++ on PATH and tools/requirements.txt
+python tools/selftest.py       # 22 checks; needs g++ on PATH and tools/requirements.txt
 ```
 
 Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host tests (18 pass, including `TestGovernorGolden`). Run `make` at the root for the firmware, using the GNU Arm toolchain. On Windows, build libopencm3 once with `make -C libopencm3 TARGETS=stm32/f1 PYTHON="py -3"`.
@@ -81,9 +81,9 @@ Zombie, on the `gov-logging` branch: `cd test && make && ./test_vcu` for host te
 
 | Item | State |
 | --- | --- |
-| V1 `kT` = 0.25 Nm per bit | Open: needs a tractor log |
+| V1 `kT` = 0.25 Nm per bit | Settled 8 Nov 2026 from telematics logs `session_0011`/`0012` (7 Nov): reported torque is 0.249–0.250 Nm per request bit, and shunt DC power gives 84–86 % motoring efficiency |
 | V2 motor 280 Nm, 80 kW | Open: Ben to confirm the motor and inverter generation |
-| V3 reported torque layout in `0x1DA` | Open: behind `SIM_REPORT_TORQUE`, default off |
+| V3 reported torque layout in `0x1DA` | Settled 8 Nov 2026, same logs: tracks the request with r = 0.998 at 20–30 ms lag. The sim now reports its motor torque there (`SIM_REPORT_TORQUE`, default on) |
 | V4 CAN pins | Settled |
 | V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Speed noise (`set noise` up to 15 rpm, Gaussian) does not change that: at shift 2 it adds about 2 Nm RMS of tick-to-tick torque jitter at no-load, and true-shaft ripple stays 242–268 rpm against 322 at shift 4. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
 | V6 raw 10 ms CAN logging on the tractor | Open |

@@ -19,7 +19,7 @@ DT = 0.01
 
 @dataclass
 class MotorParams:
-    kT: float = 0.25        # Nm per 0x1D4 bit (plan V1, VERIFY)
+    kT: float = 0.25        # Nm per 0x1D4 bit (plan V1, settled)
     tau_ms: float = 30.0    # torque lag
     tmax_nm: float = 280.0  # plan V2, VERIFY
     pmax_kw: float = 80.0   # plan V2, VERIFY
