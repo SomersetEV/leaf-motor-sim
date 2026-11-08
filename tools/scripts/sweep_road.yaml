@@ -3,7 +3,20 @@
 # 2.5 t at ~25 km/h, ~0.03 m of travel per motor radian:
 #   reflected inertia J ~2.5 kg.m2; rolling ~20 Nm at the motor; a 5-6 % climb
 #   ~60 Nm; a 4 % descent ~-15 Nm net (overrun, the governor must regen).
-# Road roughness 3 Nm at 2 Hz, speed-sensor noise 5 rpm.
+# Road roughness 3 Nm at 2 Hz.
+#
+# Speed noise and inertia, from the tractor logs of 7 Nov 2026 (telematics
+# session_0011 and 0012, road driving and towing):
+# - Reported speed ripples about 10 rpm RMS (40 rpm peak to peak) at roughly
+#   6-10 Hz, with or without the governor in control, and while the torque
+#   request is flat. The governor sees it as speed noise. The sim's noise is
+#   white per tick, and the governor filter removes more of that than of the
+#   real ripple: to pass as much as the tractor, the sim needs noise about 8
+#   at govFlt 4 but 14-15 at govFlt 2. Base noise 10, plus noise-15 copies of
+#   the govFlt 2 sets.
+# - A rough fit between logger bursts gives J 2.7-3.8 kg.m2 (r2 0.4-0.6;
+#   gear unknown). 2.5 stays as the base, and two sets repeat at J 3.5 to
+#   check the ranking holds across that range.
 #   python sweep.py scripts/sweep_road.yaml --port COM3 --out <folder>
 load:
   preset: noload
@@ -11,9 +24,13 @@ load:
   grad: [[0, 20], [10, 20], [25, 60], [40, 60], [55, -15], [70, -15], [80, 20], [90, 20]]
 settle_s: 8
 run_s: 90
-base: {govKp: 11, govKd: 0, sim: {J: 2.5, noise: 5}}
+base: {govKp: 11, govKd: 0, sim: {J: 2.5, noise: 10}}
 sets:
   - {govKi: 0, govFlt: 4}   # the tractor today
   - {govKi: 0, govFlt: 2}
   - {govKi: 1, govFlt: 4}
   - {govKi: 1, govFlt: 2}   # best on the placeholder baler
+  - {govKi: 0, govFlt: 2, sim: {noise: 15}}   # shift 2 against tractor-level ripple
+  - {govKi: 1, govFlt: 2, sim: {noise: 15}}
+  - {govKi: 0, govFlt: 4, sim: {J: 3.5}}      # top of the logged inertia range
+  - {govKi: 1, govFlt: 2, sim: {J: 3.5}}
