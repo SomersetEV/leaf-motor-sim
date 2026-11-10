@@ -1,0 +1,3 @@
+# Never convert line endings in binary files (core.autocrlf is on).
+*.pdf binary
+*.png binary
