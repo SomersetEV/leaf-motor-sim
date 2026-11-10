@@ -81,3 +81,42 @@ def friction(w: np.ndarray, tc: float, b: float, c: float) -> np.ndarray:
     """Signed resistive torque Tc + b|w| + c w^2, opposing rotation."""
     aw = np.abs(w)
     return np.sign(w) * (tc + b * aw + c * aw * aw)
+
+
+# --- Reported speed noise, mirroring lib/sensor/speed_report.cpp (plan I6) ---
+
+def design_bandpass(fc_hz: float, bw_hz: float, fs_hz: float = 1 / DT):
+    """Band-pass biquad (RBJ, 0 dB peak gain) as in lib/sensor: returns
+    (b, a, out_sd), with out_sd the output SD for unit white input."""
+    w0 = 2 * np.pi * fc_hz / fs_hz
+    alpha = np.sin(w0) / (2 * fc_hz / bw_hz)
+    a0 = 1 + alpha
+    b0, a1, a2 = alpha / a0, -2 * np.cos(w0) / a0, (1 - alpha) / a0
+    g0 = (1 + a2) / ((1 - a2) * ((1 + a2) ** 2 - a1 ** 2))
+    g1 = -a1 * g0 / (1 + a2)
+    g2 = -a1 * g1 - a2 * g0
+    out_sd = float(np.sqrt(b0 * b0 * 2 * (g0 - g2)))
+    return np.array([b0, 0.0, -b0]), np.array([1.0, a1, a2]), out_sd
+
+
+def speed_noise(n: int, sd_rpm: float, fc_hz: float = 0.0, bw_hz: float = 4.0,
+                rng: np.random.Generator | None = None) -> np.ndarray:
+    """n ticks of the simulator's reported-speed noise: white when fc_hz is 0
+    (or at or above Nyquist), otherwise band-limited, scaled to sd_rpm."""
+    from scipy.signal import lfilter
+    rng = rng or np.random.default_rng(0x5EED1DA1)
+    x = rng.standard_normal(n)
+    if sd_rpm <= 0:
+        return np.zeros(n)
+    if fc_hz <= 0 or bw_hz <= 0 or fc_hz >= 0.5 / DT:
+        return sd_rpm * x
+    b, a, out_sd = design_bandpass(fc_hz, bw_hz)
+    return sd_rpm * lfilter(b, a, x) / out_sd
+
+
+def gov_filter_gain(f_hz, shift: int) -> np.ndarray:
+    """|H(f)| of the Zombie governor's speed filter, IIRFILTERF with weight
+    1/2^shift per 10 ms tick."""
+    k = 1.0 / (1 << shift)
+    z = np.exp(-2j * np.pi * np.asarray(f_hz, dtype=float) * DT)
+    return np.abs(k / (1 - (1 - k) * z))

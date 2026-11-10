@@ -5,7 +5,7 @@
 #include "param_table.h"
 
 // Bump when SimParams changes layout, so an old blob is ignored.
-static constexpr uint32_t PARAMS_LAYOUT = 1;
+static constexpr uint32_t PARAMS_LAYOUT = 2;  // 2: noise_fc, noise_bw, rptdelay
 
 bool params_load(SimParams &p) {
     Preferences prefs;

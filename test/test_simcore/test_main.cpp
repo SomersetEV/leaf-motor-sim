@@ -135,7 +135,8 @@ static void test_tick_stats_window_published_and_reset() {
 static SimParams defaults() {
     return SimParams{{J_DEFAULT_KGM2, TC_DEFAULT_NM, B_DEFAULT_NMS, C_DEFAULT_NMS2, TAU_DEFAULT_MS,
                       TMAX_DEFAULT_NM, PMAX_DEFAULT_KW},
-                     K_T_DEFAULT, UDC_DEFAULT_V, 0.0f, MOTOR_TEMP_DEFAULT_C, INV_TEMP_DEFAULT_C};
+                     K_T_DEFAULT, UDC_DEFAULT_V, 0.0f, MOTOR_TEMP_DEFAULT_C, INV_TEMP_DEFAULT_C,
+                     NOISE_FC_DEFAULT_HZ, NOISE_BW_DEFAULT_HZ, 0.0f};
 }
 
 static void test_param_table_names_and_set() {

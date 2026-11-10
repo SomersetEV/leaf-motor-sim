@@ -8,6 +8,7 @@
 //   synth_log accel_coast <out.csv> [key=value ...]
 //   synth_log baler <out.csv> <truth.csv> [key=value ...]
 //   synth_log replay <profile.csv> <out.csv>
+//   synth_log speednoise <out.csv> [noise= fc= bw= ticks=]   (lib/sensor noise, one value a tick)
 //
 // Keys: J Tc b c tau Tmax Pmax kT (model), drop=<n> (drop n 0x4A1 frames),
 // pulse_nm pulse_period_ms pulse_duty_pct (baler load), seconds.
@@ -21,6 +22,7 @@
 #include "loads.h"
 #include "plant.h"
 #include "profile.h"
+#include "speed_report.h"
 #include "telemetry.h"
 
 struct Opts {
@@ -29,6 +31,8 @@ struct Opts {
     int drop = 0;
     float pulse_nm = 150.0f, pulse_period_ms = 700.0f, pulse_duty_pct = 40.0f;
     float seconds = 60.0f;
+    sensor::ReportParams rp;  // speednoise mode
+    int ticks = 100000;
 };
 
 static bool set_opt(Opts &o, const char *kv) {
@@ -53,6 +57,10 @@ static bool set_opt(Opts &o, const char *kv) {
     else if (!strcmp(key, "pulse_period_ms")) o.pulse_period_ms = v;
     else if (!strcmp(key, "pulse_duty_pct")) o.pulse_duty_pct = v;
     else if (!strcmp(key, "seconds")) o.seconds = v;
+    else if (!strcmp(key, "noise")) o.rp.noise_rpm = v;
+    else if (!strcmp(key, "fc")) o.rp.noise_fc_hz = v;
+    else if (!strcmp(key, "bw")) o.rp.noise_bw_hz = v;
+    else if (!strcmp(key, "ticks")) o.ticks = (int)v;
     else return false;
     return true;
 }
@@ -205,6 +213,17 @@ static int replay(const char *profile_path, const char *out_path) {
     return 0;
 }
 
+// The simulator's reported-speed noise alone, as the tick makes it
+static int speednoise(const Opts &o, const char *out_path) {
+    FILE *out = fopen(out_path, "w");
+    if (!out) return 1;
+    sensor::SpeedReport r(1.0f, 0.01f, 0x5EED1DA1u);
+    fprintf(out, "noise_rpm\n");
+    for (int i = 0; i < o.ticks; i++) fprintf(out, "%.4f\n", r.noise(o.rp));
+    fclose(out);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     if (argc < 3) {
         fprintf(stderr, "usage: synth_log accel_coast|baler|replay ...\n");
@@ -222,6 +241,7 @@ int main(int argc, char **argv) {
     if (!strcmp(mode, "accel_coast")) return accel_coast(o, argv[2]);
     if (!strcmp(mode, "baler") && argc >= 4) return baler(o, argv[2], argv[3]);
     if (!strcmp(mode, "replay") && argc >= 4) return replay(argv[2], argv[3]);
+    if (!strcmp(mode, "speednoise")) return speednoise(o, argv[2]);
     fprintf(stderr, "unknown mode\n");
     return 1;
 }

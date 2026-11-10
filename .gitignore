@@ -2,3 +2,7 @@
 .vscode/
 __pycache__/
 .venv/
+
+# Raw tractor and bench logs: large, kept outside git (plan item I2).
+# Sweep tables go in docs/bench/results/ instead.
+logs/

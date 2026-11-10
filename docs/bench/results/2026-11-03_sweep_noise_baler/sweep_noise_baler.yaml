@@ -1,0 +1,16 @@
+# M5a fifth sweep: speed noise on the reported rpm (sim 'set noise', standard
+# deviation in rpm) at govFlt 2 and 4, govKp 11, govKi 1, placeholder baler.
+# noload_treq_sd_nm is how much of the noise reaches the torque command;
+# model_stroke_p2p_rpm is the ripple on the true shaft speed.
+#   python sweep.py scripts/sweep_noise_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+base: {govKp: 11, govKi: 1, govKd: 0}
+sets:
+  - {govFlt: 4, sim: {noise: 0}}
+  - {govFlt: 4, sim: {noise: 5}}
+  - {govFlt: 4, sim: {noise: 15}}
+  - {govFlt: 2, sim: {noise: 0}}
+  - {govFlt: 2, sim: {noise: 5}}
+  - {govFlt: 2, sim: {noise: 15}}

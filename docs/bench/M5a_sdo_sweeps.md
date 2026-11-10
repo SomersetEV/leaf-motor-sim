@@ -32,6 +32,8 @@ Send back the `metrics.csv`, or let Claude run it and read it directly.
 
 ## Done so far (3 Nov 2026, Claude over COM3)
 
+The tables behind these numbers, with each sweep's YAML, are in [results/](results/) (added 10 Nov 2026, plan item I2).
+
 - Steps 2 and 3 pass: reads, writes, read-back, refusals, and `0x4B2` events, about 0.5 ms per SDO exchange.
 - The sweep plumbing passes with no pedal: two sets, gains and `GovLog` restored. The metrics were empty, correctly flagged by `pedal_pct=0`.
 - Sweep with the pedal clamped, `sweep_kp_baler.yaml`, passes: four sets, pedal steady at 91 %, governor binding throughout, no dropped `0x4A1` frames, and the gains restored. The logs are in `sweep_kp_baler_4`. On the placeholder baler, higher `govKp` cuts the droop from 129 to 58 rpm, but the per-stroke ripple rises from 232 to 380 rpm and the torque swing from 52 to 203 Nm. At no-load, Kp 14 starts to ring (45 rpm peak to peak) and Kp 18 is unstable (1350 rpm peak to peak).

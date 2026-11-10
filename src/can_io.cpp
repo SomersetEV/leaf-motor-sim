@@ -105,6 +105,8 @@ static void handle_frame(const twai_message_t &m) {
     if (m.extd || m.rtr) {
         s_stats.rx_other++;
     } else if (m.identifier == ID_LEAF_TORQUE_CMD) {
+        // Cmd1D4::torque_nm from this decode is never read: the tick scales
+        // cmd.raw by the kT parameter itself (plan item I11).
         s_latch.accept(m.data, m.data_length_code, t, K_T_DEFAULT);
     } else if (m.identifier == ID_LEAF_VCM_GEAR) {
         s_stats.rx_11a++;

@@ -1,0 +1,13 @@
+# M5a fourth sweep: govKd at govKp 11, govKi 1, govFlt 2, placeholder baler
+# preset. govKd is unscaled: % per rpm/tick of filtered speed slope.
+#   python sweep.py scripts/sweep_kd_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+base: {govKp: 11, govKi: 1, govFlt: 2}
+sets:
+  - {govKd: 0}
+  - {govKd: 0.5}
+  - {govKd: 1}
+  - {govKd: 2}
+  - {govKd: 4}

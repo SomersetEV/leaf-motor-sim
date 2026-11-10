@@ -13,7 +13,7 @@ struct ParamInfo {
     float max;
 };
 
-constexpr int PARAM_COUNT = 12;
+constexpr int PARAM_COUNT = 15;
 extern const ParamInfo PARAMS[PARAM_COUNT];
 
 // Index of the parameter called name (case-sensitive), or -1.

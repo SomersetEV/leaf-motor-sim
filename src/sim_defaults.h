@@ -13,5 +13,8 @@ inline SimParams default_sim_params() {
     p.noise_rpm = 0.0f;
     p.motor_c = MOTOR_TEMP_DEFAULT_C;
     p.inv_c = INV_TEMP_DEFAULT_C;
+    p.noise_fc_hz = NOISE_FC_DEFAULT_HZ;
+    p.noise_bw_hz = NOISE_BW_DEFAULT_HZ;
+    p.rptdelay_ms = 0.0f;
     return p;
 }

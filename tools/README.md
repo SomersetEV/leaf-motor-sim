@@ -14,7 +14,9 @@ python selftest.py          # needs g++ on PATH; checks every tool against synth
 | `make_profile.py` | R5, R6 or R7 log, plus `params.json` | Profile CSV for `/profiles/` on the SD card |
 | `compare_runs.py` | A tractor log and a bench log of the same scenario | Metrics table and overlay plot |
 | `run_script.py` | YAML script and the simulator's serial port | Timed console commands. `--stream-out` saves the CSV stream and `--canlog-out` the bus log (`canlog 1`, candump format, readable by `loglib`). Bench scripts are in `scripts/` |
-| `sweep.py` | Sweep YAML and the simulator's serial port | M5a: runs Zombie gain sets over SDO (`zset`) against a preset or SD profile, logs each run with `canlog`, and writes `metrics.csv`, scoring the no-load and loaded phases separately. A set can also set simulator model parameters (`sim: {noise: 5}`). Restores the original gains at the end. Examples: `scripts/sweep_*_baler.yaml` |
+| `sweep.py` | Sweep YAML and the simulator's serial port | M5a: runs Zombie gain sets over SDO (`zset`) against a preset or SD profile, logs each run with `canlog`, and writes `metrics.csv`. It scores the no-load phase, the loaded phase, and the ring after the load comes off (`tail_s`: period, decay, phase margin), plus `cost`. A set can also set simulator model parameters (`sim: {noise: 5}`). `repeats: N` runs each set N times and writes `metrics_summary.csv`. Restores the original gains at the end. Examples: `scripts/sweep_*.yaml`; results in `../docs/bench/results/` |
+| `fit_noise.py` | Tractor logs with `0x1DA` | Fits the simulator's band-limited speed noise (`noise`, `noise_fc`, `noise_bw`) so the governor filter passes as much of it as of the tractor's ripple, and prints the check at each filter shift (plan I6) |
+| `metrics.py` | Arrays | Shared metrics, including `ring_after_step`, `phase_margin_deg` and `cost()`, the one score shared by sweeps, the future harness and the gain search |
 
 ## Typical flow
 
@@ -39,8 +41,10 @@ python compare_runs.py r4_tractor.csv r4_bench.csv --plot r4.png --csv r4.csv
 - the fit recovers `J`, `Tc`, `b` and `c` within 5 % (the plan's criterion; it currently achieves about 0.1 %);
 - a generated baler profile matches the true load;
 - the profile parses and replays through the firmware's profile code;
-- dropped-frame counting, candump and telematics parsing, the metrics, and `run_script` timing.
+- dropped-frame counting, candump and telematics parsing, the metrics (including ring decay, phase margin and `cost`), and `run_script` timing;
+- the Python mirror of the speed noise (`simmodel.speed_noise`) against the firmware's own `lib/sensor`;
+- `sweep.py` against a fake console: replies matched to their commands with canlog lines and late replies mixed in, the integral cleared, gains restored after an error, and repeats summarised.
 
 ## Telematics logs
 
-The LilyGo telematics logger writes `session_XXXX.csv` with millisecond timestamps: ms since boot until the phone sets the clock, then unix ms, with a `TIME_SYNC` row giving the mapping. `loglib` converts the boot-time rows with it, so `t = 0` is the first frame and the summary prints the wall-clock start. Check the gap counts in the summary before fitting: as of November 2026 the logger keeps only about 15 % of frames in run mode (0.3 s bursts about every 2 s, plan V6), which is too little for `extract_params` or `make_profile`.
+The LilyGo telematics logger writes `session_XXXX.csv` with millisecond timestamps: ms since boot until the phone sets the clock, then unix ms, with a `TIME_SYNC` row giving the mapping. `loglib` converts the boot-time rows with it, so `t = 0` is the first frame and the summary prints the wall-clock start. Check the gap counts in the summary before fitting. The logs of 7 Nov 2026 kept only about 15 % of frames in run mode (0.3 s bursts about every 2 s, plan V6), which is too little for `extract_params` or `make_profile`. Ben has since fixed the logger (10 Nov). The bursts are enough for `fit_noise.py`, which needs only 0.3 s at a time.

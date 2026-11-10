@@ -105,6 +105,22 @@ static void test_noise_deterministic_for_seed() {
     }
 }
 
+static void test_reseed_repeats_noise_and_keeps_pulse_phase() {
+    Loads l(7);
+    l.set_noise(3.0f, 5.0f);
+    l.start_pulse(100.0f, 700.0f, 40.0f);
+    float first[50];
+    for (float &v : first) v = l.tick(0.0f, DT).tick.t_res_nm;
+    // 70 ticks is one pulse period, so after reseed the pulse is in the same
+    // place and only a repeated noise sequence gives the same torques.
+    for (int i = 0; i < 20; i++) l.tick(0.0f, DT);
+    l.reseed(7);
+    for (float v : first) {
+        float again = l.tick(0.0f, DT).tick.t_res_nm;
+        TEST_ASSERT_FLOAT_WITHIN(1e-4f, v, again);
+    }
+}
+
 static void test_resistive_sum_never_negative() {
     Loads l(99);
     l.set_noise(20.0f, 10.0f);
@@ -291,6 +307,7 @@ int main(int, char **) {
     RUN_TEST(test_pulse_half_sine);
     RUN_TEST(test_noise_statistics);
     RUN_TEST(test_noise_deterministic_for_seed);
+    RUN_TEST(test_reseed_repeats_noise_and_keeps_pulse_phase);
     RUN_TEST(test_resistive_sum_never_negative);
     RUN_TEST(test_grad_is_active_and_off_clears);
     RUN_TEST(test_configure_applies_step_immediately);

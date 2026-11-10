@@ -10,6 +10,7 @@
 #include "config.h"
 #include "gauss.h"
 #include "param_table.h"
+#include "speed_report.h"
 #include "spsc_ring.h"
 
 using simproto::CmdType;
@@ -27,6 +28,7 @@ static std::atomic<uint32_t> s_stream_div{1};
 static SimParams s_params;
 static plant::Plant *s_plant;
 static loads::Loads *s_loads;
+static sensor::SpeedReport *s_report;
 static bool s_inv_fault = false;
 static uint8_t s_preset_id = 0;
 static char s_preset_name[16] = "";
@@ -39,11 +41,30 @@ static void send_event(uint8_t ev, uint16_t value, uint32_t now_ms) {
 
 static uint16_t nm_value(float nm) { return (uint16_t)(int16_t)lroundf(nm); }
 
+// Both noise sources restart on preset and mark, so the same script gives the
+// same run (plan item I5). The pulse phase restarts on preset (configure) and
+// load pulse, but not on mark, which scripts also send mid-stroke.
+static void reseed() {
+    s_loads->reseed(LOAD_NOISE_SEED);
+    s_report->reseed(SPEED_NOISE_SEED);
+}
+
+static sensor::ReportParams report_params(const SimParams &p) {
+    sensor::ReportParams r;
+    r.noise_rpm = p.noise_rpm;
+    r.noise_fc_hz = p.noise_fc_hz;
+    r.noise_bw_hz = p.noise_bw_hz;
+    r.delay_ms = p.rptdelay_ms;
+    return r;
+}
+
 // Applies one queued command. Runs at the start of a tick.
 static void apply(const SimCmd &c, uint32_t now_ms) {
     switch (c.type) {
     case CmdType::SetParam:
-        simcore::param_set(s_params, c.i, c.f[0]);
+        // The console range-checks before posting, so this cannot fail today;
+        // the event is only sent for a value that was taken.
+        if (!simcore::param_set(s_params, c.i, c.f[0])) break;
         s_plant->set_params(s_params.plant);
         send_event(simproto::EV_PARAM, (uint16_t)c.i, now_ms);
         break;
@@ -51,6 +72,7 @@ static void apply(const SimCmd &c, uint32_t now_ms) {
         s_params = c.preset.params;
         s_plant->set_params(s_params.plant);
         s_loads->configure(c.preset.loads);
+        reseed();
         s_preset_id = c.preset.id;
         memcpy(s_preset_name, c.preset.name, sizeof(s_preset_name));
         send_event(simproto::EV_PRESET, c.preset.id, now_ms);
@@ -95,6 +117,7 @@ static void apply(const SimCmd &c, uint32_t now_ms) {
         s_loads->set_profile_exponent(c.f[0], c.f[1]);
         break;
     case CmdType::Mark:
+        reseed();
         send_event(simproto::EV_MARKER, (uint16_t)c.i, now_ms);
         break;
     case CmdType::FaultInv:
@@ -111,12 +134,12 @@ static void sim_task(void *) {
     simcore::TickStats stats(TICK_MS * 1000, TICK_TOLERANCE_US, JITTER_WINDOW_TICKS);
     plant::Plant model(s_params.plant);
     loads::Loads loads(LOAD_NOISE_SEED);
-    loads::Gauss speed_noise(SPEED_NOISE_SEED);
-    s_plant = &model;
-    s_loads = &loads;
-
     const float dt_tick = TICK_MS / 1000.0f;
     const float dt_sub  = dt_tick / SUBSTEPS_PER_TICK;
+    sensor::SpeedReport report(dt_sub * 1000.0f, dt_tick, SPEED_NOISE_SEED);
+    s_plant = &model;
+    s_loads = &loads;
+    s_report = &report;
     TickType_t wake = xTaskGetTickCount();
     int64_t prev_us = esp_timer_get_time();
     uint32_t tick = 0;
@@ -150,12 +173,14 @@ static void sim_task(void *) {
             send_event(simproto::EV_PROFILE_STOP, (uint16_t)(rows > 65535 ? 65535 : rows), now_ms);
         }
 
-        // 3. Ten 1 ms model sub-steps
-        for (uint32_t i = 0; i < SUBSTEPS_PER_TICK; i++) model.substep(t_req, lo.tick, dt_sub);
+        // 3. Ten 1 ms model sub-steps, each recorded for the report delay
+        for (uint32_t i = 0; i < SUBSTEPS_PER_TICK; i++) {
+            model.substep(t_req, lo.tick, dt_sub);
+            report.push(model.rpm());
+        }
         float rpm = model.rpm();
-        // Measurement noise goes on the reported speed only, never the model
-        float rpm_reported = rpm;
-        if (s_params.noise_rpm > 0.0f) rpm_reported += s_params.noise_rpm * speed_noise.next();
+        // Delay and measurement noise go on the reported speed only, never the model
+        float rpm_reported = report.report(report_params(s_params));
 
         // 4. Inverter status, then fast telemetry
 #if SIM_REPORT_TORQUE

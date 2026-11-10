@@ -51,6 +51,11 @@ void Loads::off() {
     noise_y_ = 0.0f;
 }
 
+void Loads::reseed(uint32_t seed) {
+    gauss_ = Gauss(seed);
+    noise_y_ = 0.0f;
+}
+
 void Loads::set_profile(const Profile *p) {
     profile_ = p;
     row_ = 0;

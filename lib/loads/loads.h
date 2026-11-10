@@ -58,6 +58,10 @@ public:
     void set_grad(float nm) { cfg_.grad_nm = nm; }
     // Removes step, pulse, gradient and noise. The profile is unaffected.
     void off();
+    // Restarts the noise sequence from seed, so a run can be repeated exactly
+    // (plan item I5). The pulse phase is left alone: configure() and
+    // start_pulse() already restart it, and a script may mark mid-stroke.
+    void reseed(uint32_t seed);
 
     // Profile replay. The profile must outlive its use here; pass nullptr
     // before freeing it.

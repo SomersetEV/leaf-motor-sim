@@ -28,12 +28,14 @@ Build in the milestone order of section 11 and stop at each milestone for a hard
 
 **Source of truth.** Facts about the Zombie firmware in this plan were read from `SomersetEV/Stm32-vcu`, branch `Tractor-RPM-limiting-testing`, commit `d85e756` (15 Sep 2026). Re-check each one against the working tree before relying on it. Where the tree differs, the tree wins and the difference gets reported.
 
+Re-checked 10 Nov 2026 (item I1) against `Tractor-RPM-limiting-testing` at `a05e984` (8 Nov), which now carries the governor logging commits from `gov-logging`, and `MGChgLimRaw` moved to ID 164 in `28d53d0`. The Leaf codecs (`leafinv.cpp`, `NissLeafMng.cpp`) are unchanged since `d85e756`. `throttle.cpp` matches `gov-logging`, apart from formatting. The next free IDs are 165 (parameters) and 2130 (values). The host tests pass on the tractor branch.
+
 **Repositories.**
 
 | Work | Location |
 | --- | --- |
 | Simulator firmware and PC tools | New repo `leaf-motor-sim`, PlatformIO project |
-| Zombie logging changes | New branch `gov-logging` off `Tractor-RPM-limiting-testing` in `SomersetEV/Stm32-vcu` |
+| Zombie logging changes | Branch `gov-logging` off `Tractor-RPM-limiting-testing` in `SomersetEV/Stm32-vcu`, since carried into `Tractor-RPM-limiting-testing` itself (`7ea0fa6`, `a05e984`) |
 | This plan | `docs/SIMULATOR_PLAN.md` in `leaf-motor-sim`, exported from this doc as Markdown |
 |  |  |
 
@@ -49,18 +51,18 @@ Build in the milestone order of section 11 and stop at each milestone for a hard
 
 ## 3. Bench architecture
 
-Three nodes share one 500 kbit/s CAN bus: the real Zombie, the LilyGo simulator, and a USB-CAN adapter that only listens. There is no high voltage anywhere on the bench.
+Two nodes share one 500 kbit/s CAN bus: the real Zombie and the LilyGo simulator, which also logs the bus (`canlog`). There is no high voltage anywhere on the bench.
 
 | Node | Real or simulated | Connections |
 | --- | --- | --- |
 | ZombieVerter VCU | Real hardware, real firmware (device under test) | 12 V bench supply. Inverter CAN to the bench bus. |
 | LilyGo T-CAN485 | Simulated Leaf inverter, motor and load | USB to PC for power and serial. CAN H/L to the bench bus. |
-| USB-CAN adapter with SavvyCAN | Real, independent logger | Bench bus, listen-only. |
+| USB-CAN adapter with SavvyCAN | Not used since 3 Nov 2026 | The Due with GVRET sent error frames even in listen-only mode and dropped Zombie frames. Keep it unpowered. The simulator's `canlog` logs the bus instead (section 7). |
 | Throttle pot | Real | Zombie throttle 1 input, as on the tractor. |
 | Ignition, start, direction, brake switches | Real | Zombie digital inputs at 12 V. |
 | Contactor and precharge outputs | Not connected | Optional indicator lamps. |
 
-The bus needs exactly two 120 Ω terminations. Check which of the three nodes already carry one before adding any.
+The bus needs exactly two 120 Ω terminations. Check which nodes already carry one before adding any.
 
 ### How the Zombie starts against the simulator
 
@@ -94,13 +96,13 @@ The simulator is a PlatformIO project for the LilyGo T-CAN485, using the Arduino
 
 ### Pins
 
-These values are from LilyGO's own example `config.h` for the board ([source](https://raw.githubusercontent.com/Xinyuan-LilyGO/T-CAN485/main/example/Arduino/CAN/config.h)).
+These values are from LilyGO's own example `config.h` for the board ([source](https://raw.githubusercontent.com/Xinyuan-LilyGO/T-CAN485/main/example/Arduino/CAN/config.h)), except the CAN pins, which come from Ben's working telematics firmware (V4, settled). LilyGO's example has them swapped.
 
 | Signal | GPIO | Note |
 | --- | --- | --- |
 | `PIN_5V_EN` | 16 | Drive high to power the transceiver supply. |
-| `CAN_TX_PIN` | 26 | **VERIFY** against Ben's working telematics firmware. |
-| `CAN_RX_PIN` | 27 | **VERIFY**, some published pinouts show TX and RX swapped. |
+| `CAN_TX_PIN` | 27 | From Ben's telematics firmware, proven on his hardware. |
+| `CAN_RX_PIN` | 26 | Same. |
 | `CAN_SE_PIN` | 23 | Drive low to take the transceiver out of standby. |
 | SD MISO, MOSI, SCLK, CS | 2, 15, 14, 13 | SPI microSD. |
 | `WS2812_PIN` | 4 | Status LED. |
@@ -124,21 +126,28 @@ leaf-motor-sim/
     pins.h            board pins
     config.h          CAN ids, periods, default model parameters
   lib/                pure C++, no Arduino includes
-    leafcodec/        decode 0x1D4 and 0x11A, encode 0x1DA and 0x55A, Nissan CRC
+    leafcodec/        decode 0x1D4, encode 0x1DA and 0x55A, Nissan CRC
     plant/            motor torque envelope, torque lag, inertia integration
-    loads/            load components, presets, profile player
-    simproto/         telemetry frame packing, console command parser
+    loads/            load components, profile storage and CSV parser
+    sensor/           reported speed: delay and noise (items I6, I7)
+    simcore/          0x1D4 latch, tick statistics, parameter table, presets, flat JSON
+    simproto/         telemetry frame packing, console and command parsing, Zombie SDO
   src/                hardware-facing code
     main.cpp          setup, task creation
-    can_io.cpp        TWAI init, receive task, transmit helper, bus-off recovery
+    can_io.cpp        TWAI init, receive task, transmit helper, bus-off recovery, canlog
     sim_task.cpp      the 10 ms loop
-    console.cpp       serial commands and CSV streaming
-    sd_profiles.cpp   load profile and preset files into RAM
+    console.cpp       serial commands, CSV streaming, zget and zset
+    sd_files.cpp      profile and preset files from SD into RAM
+    params_store.cpp  parameters in NVS
     status_led.cpp
   test/
-    test_leafcodec/  test_plant/  test_loads/  test_simproto/
+    test_leafcodec/  test_plant/  test_loads/  test_sensor/  test_simcore/  test_simproto/
   tools/              PC-side Python, see section 9
     dbc/leaf_sim.dbc
+    scripts/          bench scripts and sweep YAML
+  docs/bench/         bench procedure per milestone; results/ holds sweep tables
+  sd_card/            example SD card contents
+  .github/workflows/  CI: native tests, tool self-test, firmware build (item I3)
 ```
 
 ## 5. Part A: CAN interface specification
@@ -288,9 +297,15 @@ Every default below is a placeholder until the identification runs in section 9 
 | `tau` | Motor torque lag | 30 ms | Requested against reported torque in logs |
 | `Tmax` | Motor torque limit | 280 Nm | **VERIFY** motor type on the tractor |
 | `Pmax` | Motor power limit | 80 kW | **VERIFY** motor type on the tractor |
-| `kT` | Torque per request bit | 0.25 Nm | **VERIFY** from logs |
+| `kT` | Torque per request bit | 0.25 Nm | Settled from tractor logs (V1) |
 | `udc` | Reported bus voltage | 360 V | Tractor pack nominal voltage |
-| `noise` | Speed noise, standard deviation | 0 rpm | Steady no-load log |
+| `noise` | Speed noise, standard deviation | 0 rpm | Tractor logs, `tools/fit_noise.py`: 11 rpm |
+| `noise_fc` | Speed noise band centre; 0 is white per tick | 0 Hz | Same fit: 6 Hz (item I6) |
+| `noise_bw` | Speed noise bandwidth, −3 dB | 4 Hz | Same fit: 4 Hz |
+| `rptdelay` | Extra delay on the speed in `0x1DA`, 0–50 ms, to the nearest 1 ms sub-step | 0 ms | Delay-margin tests (item I7) |
+| `motor_c`, `inv_c` | Reported temperatures in `0x55A` | 40 °C | Not needed |
+
+The speed noise and its seed, and the load noise, restart on every `preset` and `mark`, so a script repeats exactly (item I5).
 
 ### Load components
 
@@ -369,10 +384,14 @@ Line-based commands at 921600 baud. Every command replies with one line starting
 | `load step <Nm> [ramp_ms] [dJ]` | Start a resistive torque step. |
 | `load pulse <Nm> <period_ms> <duty_pct>` | Start a periodic pulse load. |
 | `load grad <Nm>` | Set the signed active torque. |
+| `load noise <sd_Nm> [corner_hz]` | Low-pass filtered random load torque. |
 | `load off` | Remove step, pulse, gradient and noise loads. |
+| `presets` | List built-in presets and those on SD. |
 | `profile load <file>` | Read a profile into RAM. |
 | `profile start`, `profile stop`, `profile loop <0\|1>` | Control replay. |
-| `mark <n>` | Send a marker event in `0x4B2`. |
+| `profile exp <n> <w_ref_rpm>`, `profile list` | Scale profile torque with speed; list profiles on SD. |
+| `mark <n>` | Send a marker event in `0x4B2`, and restart both noise sources. |
+| `zget <name>`, `zset <name> <value>` | Read or write a whitelisted Zombie governor parameter over SDO (M5a). |
 | `fault inv <0\|1>` | Set or clear the inverter error bit in `0x1DA`. |
 | `stream <0\|1> [divider]` | CSV streaming on or off, optionally every Nth tick. |
 | `canlog <0\|1> [all]` | Bus log on or off: received and transmitted frames as candump `-l` lines, `(s.us) can0 ID#DATA`. By default it logs only the IDs in `CANLOG_IDS`; `all` logs every frame. A full queue drops frames and counts them in `stat` as `canlog_dropped`. |
@@ -494,6 +513,8 @@ Python 3 with `pandas`, `numpy`, `scipy`, `matplotlib`, `cantools` and `python-c
 | `make_profile.py` | R5, R6, R7 logs and `params.json` | Profile CSV files for the SD card. |
 | `compare_runs.py` | A tractor log and a bench log of the same scenario | Overlay plots and a metrics table. |
 | `run_script.py` | A YAML test script and the simulator serial port | Sends timed console commands, so bench tests are repeatable. |
+| `sweep.py` | A sweep YAML and the simulator serial port | Runs Zombie gain sets over SDO against a load and scores each run (M5a, items I4, I5, I8). |
+| `fit_noise.py` | Tractor logs with `0x1DA` | The band-limited speed noise that matches the tractor through the governor filter (item I6). |
 
 ### Fitting method
 
@@ -615,9 +636,9 @@ Seven assumptions needed checking and three risks need watching. None blocks M1 
 | V1 | Torque request scale `kT` is 0.25 Nm per bit. | Sets where the motor envelope clips, which changes effective governor gain. | **Settled 8 Nov 2026.** In two tractor logs (telematics `session_0011` and `0012`, 7 Nov), reported torque is 0.249–0.250 Nm per request bit. With `kT` 0.25, mechanical power is 84–86 % of the shunt's DC power when motoring, and DC power 78–82 % of mechanical on regen. |
 | V2 | Tractor motor limits are 280 Nm and 80 kW. | Same as V1. | Ben confirms which Leaf motor and inverter generation is fitted. |
 | V3 | Reported torque in `0x1DA` is 11-bit signed at 0.5 Nm in bytes 2 and 3. | Needed to fit torque lag and to separate inertia from `kT`. | **Settled 8 Nov 2026.** In the same logs it tracks the request with r = 0.998, best aligned at 20–30 ms lag, consistent with `tau` 30 ms. The simulator now reports it (`SIM_REPORT_TORQUE`, default on). |
-| V4 | T-CAN485 CAN pins are TX 26 and RX 27. | Published pinouts disagree between board revisions. | Copy from Ben's working telematics firmware. |
+| V4 | T-CAN485 CAN pins are TX 26 and RX 27. | Published pinouts disagree between board revisions. | **Settled by Ben.** His working telematics firmware uses TX 27 and RX 26, the other way round from LilyGO's example, and `include/pins.h` follows it. |
 | V5 | Governor speed filter is meant to be shift 4. | The source comment says about 30 ms, the code gives about 160 ms. | Ben decides after bench runs with `govFlt` at 4, 3 and 2. |
-| V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | Ben confirms the logger, or uses a USB-CAN adapter with SavvyCAN in the cab. |
+| V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | The telematics logger kept only about 15 % of frames in run mode (7 Nov logs). Ben has fixed it (10 Nov 2026, item I9) and will take new logs. Check them for gaps in the `0x4A1` counter. |
 | V7 | The bench Zombie reaches run mode with ignition, start, direction and brake inputs only. | Start conditions depend on the selected vehicle type. | Read the `Ready()` and `Start()` logic of the vehicle class in the tractor's parameter file. |
 
 ### Risks
@@ -770,6 +791,22 @@ Section 2 still applies. Work down the table and stop at the end of the mileston
 | I10 | SD transfer over serial | Apply the stash, capture the panic backtrace from `sd ls`, and fix it. Suspects are the console task's stack size and SD access from the wrong task. | `sd ls` and `sd get` work, and `topper.json` is off the card. |
 | I11 | Two small code checks | In `src/sim_task.cpp`, `apply()` ignores a failed `param_set`. In `src/can_io.cpp`, the `0x1D4` latch decodes with `K_T_DEFAULT`, while the tick uses the `kT` parameter. Confirm each is harmless, or fix it. | A note in the commit message. |
 
+### Progress (10 Nov 2026)
+
+| # | State |
+| --- | --- |
+| I1 | Done. The Zombie facts hold, apart from the ID 162 clash, which is gone: see section 2. `CLAUDE.md`, the README and sections 3, 4, 6, 7, 9 and 12 are updated. |
+| I2 | Done as proposed (Ben, 10 Nov). `logs/` is in `.gitignore`. The five 3 Nov sweeps are in `docs/bench/results/`, each with its YAML, the table as run, and the same bus logs re-scored by today's `sweep.py`; `docs/tractor/` goes in with the commit. |
+| I3 | Built: `.github/workflows/ci.yml`. A green run needs a push. |
+| I4 | Done: seven `sweep.py` checks in `selftest.py`, against a fake console. While writing them, the fixed 0.2 s wait after a gradient ramp was replaced: the console now counts the replies to unchecked commands, and each checked command waits for them first. |
+| I5 | Built: both noise sources restart on `preset` and `mark`, and the pulse phase on `preset` and `load pulse`, but not on `mark`, which `baler_example.yaml` sends mid-stroke. `repeats: N` writes `metrics_summary.csv`. The "under 5 rpm" check needs the bench. |
+| I6 | Built and fitted: `lib/sensor`, parameters `noise_fc` and `noise_bw`, mirrored in `tools/simmodel.py` and checked against the C++ in `selftest.py`. `tools/fit_noise.py` on the 7 Nov logs gives `noise` 11, `noise_fc` 6, `noise_bw` 4: within 5 % of the tractor through the filter at shifts 4, 3, 2 and 1 (white noise would need 11 at shift 4 but 16 at shift 2). `sweep_road.yaml` uses that one setting. |
+| I7 | Built: `rptdelay`, with unit tests; `params` lists it. |
+| I8 | Done: `iae_rpm_s`, `torque_rms_nm`, `ring_after_step`, `phase_margin_deg` and `cost()` in `metrics.py`, with self-test checks. `sweep.py` ends each set with the load taken off (`tail_s`, default 4 s) and scores the ring there. |
+| I9 | Ben fixed the telematics logger himself (10 Nov); new logs to come. |
+| I10 | Waiting for the bench: the board must be connected to capture the backtrace. |
+| I11 | Both harmless. The console range-checks before posting `set`, so `param_set` cannot fail; `apply()` now sends the event only for a value it took. `Cmd1D4::torque_nm` from the latch is never read: the tick scales `raw` by `kT` itself. Commented in `can_io.cpp`. |
+
 ## 16. Tuning improvements
 
 Tuning so far has been by bench sweep, at 30 to 90 seconds per gain set. This section adds a model of the loop that says where to look, a PC harness that runs the Zombie's own governor code against the plant in milliseconds, and a search over that harness. The bench then confirms a short list instead of exploring.
@@ -811,7 +848,7 @@ The model gives these starting values. They are predictions from placeholder ine
 - Shift 2 about doubles the usable `govKp`. Try shift 1 once coloured noise (I6) is in.
 - Set `govKi` from `govKp`. The integral time Ti is `govKp` / (10 × `govKi`) seconds, so `govKp` 11 with `govKi` 1 is 1.1 s. Aim for Ti of about 4 divided by the crossover in rad/s.
 - Try `govImax` at about 60. Above about 55 % the motor is already at its 280 Nm limit, so a larger integral only adds wind-up.
-- Add road sets at `govKp` 20 to 30 with shift 2 to `sweep_road.yaml`.
+- Add road sets at `govKp` 20 to 30 with shift 2 to `sweep_road.yaml`. Done 10 Nov 2026: `govKp` 20 and 30 P-only, and 25 with `govKi` 3.
 
 Build `tools/loopcalc.py`: from `govKp`, `govKi`, `govKd`, `govFlt`, J, `tau` and delay, it prints the crossover, the phase and gain margins and the predicted ring period. Keep the unit conversions in that one file.
 

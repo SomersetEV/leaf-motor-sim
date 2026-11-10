@@ -7,9 +7,15 @@ libraries, generates logs with known parameters, and checks:
   2. make_profile recovers a known baler load, and the profile it writes
      parses and replays through the firmware's profile code unchanged
   3. loglib counts dropped 0x4A1 frames and reads candump and telematics logs
-  4. the metrics give the expected values on known signals
-  5. compare_runs gives identical numbers for identical logs
-  6. run_script sends commands on time and checks the replies
+  4. the metrics give the expected values on known signals, including the
+     loop metrics and cost() of plan item I8
+  5. the Python mirror of the simulator's speed noise (lib/sensor) passes the
+     governor filter like the C++ does (plan item I6)
+  6. compare_runs gives identical numbers for identical logs
+  7. run_script sends commands on time and checks the replies
+  8. sweep.py, against a fake console: replies matched to their commands with
+     canlog lines and late replies mixed in, the integral cleared, gains
+     restored after an error, repeats summarised (plan item I4)
 
     python selftest.py [--keep DIR]
 """
@@ -53,10 +59,11 @@ def build_synth(out_dir: Path) -> Path:
     if not gxx:
         raise SystemExit("g++ not found on PATH; it is needed to build the synthetic log generator")
     exe = out_dir / ("synth_log.exe" if sys.platform == "win32" else "synth_log")
-    libs = ["leafcodec", "plant", "loads", "simproto", "simcore"]
+    libs = ["leafcodec", "plant", "loads", "sensor", "simproto", "simcore"]
     srcs = [TOOLS / "synth" / "synth_log.cpp", ROOT / "lib/leafcodec/leafcodec.cpp",
             ROOT / "lib/plant/plant.cpp", ROOT / "lib/loads/loads.cpp",
-            ROOT / "lib/loads/profile.cpp", ROOT / "lib/simproto/telemetry.cpp"]
+            ROOT / "lib/loads/profile.cpp", ROOT / "lib/simproto/telemetry.cpp",
+            ROOT / "lib/sensor/speed_report.cpp"]
     cmd = [gxx, "-O2", "-std=c++17", *[f"-I{ROOT / 'lib' / l}" for l in libs],
            *map(str, srcs), "-o", str(exe)]
     subprocess.run(cmd, check=True)
@@ -173,6 +180,157 @@ def test_metrics():
     check("time with flag set", abs(mt.time_true_s(np.r_[np.zeros(100), np.ones(250)]) - 2.5) < 1e-9)
 
 
+def test_metrics_i8():
+    t = np.arange(0, 10, 0.01)
+    check("IAE of a constant error", abs(mt.iae_rpm_s(t, np.full_like(t, 2210.0), 2200.0, t < 2) - 20.0) < 1e-6)
+    tq = 50 + 30 * np.sin(2 * np.pi * t / 0.7)
+    check("torque RMS about the mean", abs(mt.torque_rms_nm(tq) - 30 / math.sqrt(2)) < 0.1,
+          f"{mt.torque_rms_nm(tq):.2f} Nm")
+    # A ring that keeps 0.65 of itself each 0.63 s cycle, as on the M4 bench at shift 4
+    period, keep, t0 = 0.63, 0.65, 1.0
+    sig = -math.log(keep) / period
+    v = np.where(t < t0, 2200.0, 2200 + 100 * np.exp(-sig * (t - t0)) * np.cos(2 * np.pi * (t - t0) / period))
+    p, dec, n = mt.ring_after_step(t, v, t0, window_s=8.0)
+    check("ring period and decay after a step", abs(p - period) < 0.02 and abs(dec - keep) < 0.04 and n >= 4,
+          f"{p:.3f} s, keeps {dec:.3f} per cycle, {n} peaks")
+    p1, d1, n1 = mt.ring_after_step(t, np.where(t < t0, 2200.0, 2200 + 100 * np.exp(-(t - t0) / 0.2)), t0)
+    check("no ring after a smooth recovery", d1 == 0.0 and n1 == 1, f"decay {d1}, {n1} peaks")
+    pm65, pm35 = mt.phase_margin_deg(0.65), mt.phase_margin_deg(0.35)
+    check("phase margin from decay (plan section 16: about 7 and 17-21 degrees)",
+          6 <= pm65 <= 9 and 16 <= pm35 <= 21, f"{pm65:.1f} and {pm35:.1f} degrees")
+    m = {"load_mae_rpm": 70.0, "stroke_p2p_rpm": 240.0, "stroke_period_s": 0.7, "load_treq_rms_nm": 60.0}
+    want = sum(mt.COST_WEIGHTS[k] * m[k] for k in mt.COST_WEIGHTS)
+    worse = dict(m, stroke_p2p_rpm=300.0)
+    check("cost is the weighted sum, higher for more ripple, NaN when a term is missing",
+          abs(mt.cost(m) - want) < 1e-9 and mt.cost(worse) > mt.cost(m)
+          and math.isnan(mt.cost({"load_mae_rpm": 1.0})), f"{mt.cost(m):.1f}")
+
+
+def test_speed_noise(exe, d):
+    """The Python mirror of lib/sensor gives the governor the same noise."""
+    import fit_noise
+    import simmodel as sm
+    from scipy.signal import lfilter
+    for fc, bw in ((0.0, 4.0), (6.0, 4.0)):
+        out = d / f"noise_{fc:g}.csv"
+        synth(exe, "speednoise", out, "noise=10", f"fc={fc}", f"bw={bw}", "ticks=200000")
+        c = pd.read_csv(out).noise_rpm.to_numpy()
+        p = sm.speed_noise(200000, 10.0, fc, bw, np.random.default_rng(3))
+        rows = []
+        ok = abs(c.std() - 10) < 0.3 and abs(p.std() - 10) < 0.3
+        for k in (4, 2):
+            a = 1.0 / (1 << k)
+            fc_, fp = (lfilter([a], [1, -(1 - a)], x)[500:].std() for x in (c, p))
+            want = fit_noise.true_passed(fc, bw, 10.0, k)
+            ok &= abs(fc_ / want - 1) < 0.05 and abs(fp / want - 1) < 0.05
+            rows.append(f"shift {k}: C++ {fc_:.2f}, Python {fp:.2f}, expected {want:.2f}")
+        check(f"speed noise {'white' if fc == 0 else f'band {fc:g} Hz'}: C++ and Python mirror agree",
+              ok, f"sd {c.std():.2f}/{p.std():.2f}; " + "; ".join(rows))
+
+
+class FakeSim:
+    """Stands in for the simulator console and the Zombie behind it, for
+    sweep.py. Replies in order, like the real console, with 'load grad'
+    answered late. canlog lines are mixed in while canlog is on. Plain 'ok'
+    replies carry a tag, so a test can see which command each one answered."""
+
+    def __init__(self, now, fail_on=None, late_s=0.3):  # longer than the 0.2 s the old sweep waited
+        self.now = now
+        self.fail_on = fail_on
+        self.late_s = late_s
+        self.z = {"revlim": 2200.0, "govKp": 11.0, "govKi": 0.0, "govKd": 0.0, "govImax": 100.0,
+                  "govFlt": 4.0, "GovLog": 0.0}
+        self.queue = []
+        self.sent = []
+        self.tags = {}
+        self.canlog = False
+        self.next_frame = 0.0
+
+    def write(self, data: bytes):
+        c = data.decode().strip()
+        self.sent.append(c)
+        parts = c.split()
+        if c == self.fail_on:
+            reply = "err Zombie refused (abort 0x06090030)"
+        elif parts[0] == "zget":
+            reply = f"ok {parts[1]}={self.z[parts[1]]:g}"
+        elif parts[0] == "zset":
+            old = self.z[parts[1]]
+            self.z[parts[1]] = float(parts[2])
+            reply = f"ok {parts[1]}={float(parts[2]):g} was={old:g}"
+        else:
+            reply = f"ok #{len(self.sent)}"
+            self.tags[len(self.sent)] = c
+        if parts[0] == "canlog":
+            self.canlog = parts[1] == "1"
+        due = self.now[0] + (self.late_s if c.startswith("load grad") else 0.002)
+        self.queue.append((max(due, self.queue[-1][0] if self.queue else 0.0), (reply + "\n").encode()))
+
+    def readline(self):
+        self.now[0] += 0.001
+        if self.canlog and self.now[0] >= self.next_frame:
+            self.next_frame = self.now[0] + 0.002
+            return f"({self.now[0]:.6f}) can0 4B0#0000000000000000\n".encode()
+        if self.queue and self.queue[0][0] <= self.now[0]:
+            return self.queue.pop(0)[1]
+        return b""
+
+
+def test_sweep(d):
+    import sweep
+    spec = sweep.load_sweep("load: {preset: noload, grad: [[0, 10], [1, 30]]}\n"
+                            "settle_s: 0.5\nrun_s: 1.0\ntail_s: 0.3\n"
+                            "base: {govKp: 11}\nsets: [{govKi: 0}, {govKi: 1, govFlt: 2}]\n")
+    now = [0.0]
+
+    def sleep(s):
+        now[0] += s
+
+    def run(sim, out):
+        lines = []
+        con = sweep.Console(sim, log=lines.append, clock=lambda: now[0], sleep=sleep)
+        out.mkdir(exist_ok=True)
+        try:
+            return sweep.run_sweep(spec, con, out, log=lines.append), lines, None
+        except sweep.SweepError as e:
+            return None, lines, e
+
+    sim = FakeSim(now)
+    rows, lines, err = run(sim, d / "sweep_ok")
+    answered = [(c, int(r.split("#")[1])) for c, r in
+                (ln.strip()[2:].split("  < ") for ln in lines if ln.strip().startswith("> ")) if "#" in r]
+    wrong = [(c, sim.tags[n]) for c, n in answered if sim.tags[n] != c]
+    grads = sum(c.startswith("load grad") for c in sim.sent)
+    check("sweep: every reply goes to its own command, with late grad replies", err is None and not wrong
+          and grads > 5 and len(answered) >= 15, f"{len(answered)} checked, {grads} grad commands, mismatched {wrong[:2]}")
+    bus = (d / "sweep_ok" / "run_01_bus.log").read_text().splitlines()
+    check("sweep: canlog lines go to the bus log, not the reply reader",
+          len(bus) > 100 and all(ln.startswith("(") for ln in bus), f"{len(bus)} lines")
+    seq = [c for c in sim.sent if c.startswith("zset govImax") or c == "canlog 1"]
+    want = ["zset govImax 0", "zset govImax 100.0", "canlog 1"] * 2
+    check("sweep: integral cleared before each set (govImax 0, then back, then the log)",
+          seq[:6] == want, " | ".join(seq[:6]))
+    check("sweep: tail phase marks and removes the load",
+          sim.sent.count("load off") == 2 and sim.sent.count("mark 1") == 2, "")
+    check("sweep: gains restored at the end", sim.z == FakeSim(now).z, str(sim.z))
+
+    sim = FakeSim(now, fail_on="zset govFlt 2")
+    _, lines, err = run(sim, d / "sweep_err")
+    tail = {c.split()[1]: float(c.split()[2]) for c in sim.sent[sim.sent.index("zset govFlt 2") + 1:]
+            if c.startswith("zset ")}
+    orig = FakeSim(now).z
+    check("sweep: gains restored after an error", err is not None and sim.z == orig
+          and all(tail.get(n) == orig[n] for n in ("govKi", "GovLog", "govFlt", "govImax", "revlim")),
+          f"stopped with: {err}")
+
+    rows = [{"set": 1, "run": r, "govKp": 11, "revlim_rpm": 2200.0, "stroke_p2p_rpm": v}
+            for r, v in ((1, 230.0), (2, 240.0), (3, 235.0))]
+    s = sweep.summarise(rows)
+    check("sweep: repeats summarised as mean and standard deviation",
+          len(s) == 1 and s[0]["runs"] == 3 and s[0]["govKp"] == 11
+          and abs(s[0]["stroke_p2p_rpm_mean"] - 235) < 1e-9 and abs(s[0]["stroke_p2p_rpm_sd"] - 5) < 1e-9, str(s[0]))
+
+
 def test_compare(baler_log):
     log = loglib.load(baler_log)
     a = compare_runs.compute(log, 2000.0)
@@ -248,8 +406,11 @@ def main(argv=None) -> int:
         baler = test_profile(exe, d)
         test_loglib(exe, d)
         test_metrics()
+        test_metrics_i8()
+        test_speed_noise(exe, d)
         test_compare(baler)
         test_run_script()
+        test_sweep(d)
     finally:
         if not a.keep:
             shutil.rmtree(d, ignore_errors=True)

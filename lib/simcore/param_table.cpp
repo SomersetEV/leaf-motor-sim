@@ -6,6 +6,7 @@
 namespace simcore {
 
 // Names follow plan section 6; temperatures are extra, for the 0x55A frame.
+// New parameters go at the end: 0x4B2 parameter events carry the index.
 const ParamInfo PARAMS[PARAM_COUNT] = {
     {"J",       "kg.m2",       0.001f, 50.0f},
     {"Tc",      "Nm",          0.0f,   500.0f},
@@ -19,6 +20,9 @@ const ParamInfo PARAMS[PARAM_COUNT] = {
     {"noise",   "rpm",         0.0f,   500.0f},
     {"motor_c", "degC",        -40.0f, 150.0f},
     {"inv_c",   "degC",        -40.0f, 150.0f},
+    {"noise_fc", "Hz",         0.0f,   45.0f},   // 0 = white; must stay below 50 Hz
+    {"noise_bw", "Hz",         0.5f,   50.0f},
+    {"rptdelay", "ms",         0.0f,   50.0f},   // SpeedReport::DELAY_MAX_MS
 };
 
 int param_index(const char *name) {
@@ -40,7 +44,10 @@ float &param_ref(SimParams &p, int index) {
     case 8:  return p.udc_v;
     case 9:  return p.noise_rpm;
     case 10: return p.motor_c;
-    default: return p.inv_c;
+    case 11: return p.inv_c;
+    case 12: return p.noise_fc_hz;
+    case 13: return p.noise_bw_hz;
+    default: return p.rptdelay_ms;
     }
 }
 

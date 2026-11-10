@@ -1,0 +1,15 @@
+# M5b repeatability check (plan item I5): one set, the best so far on the
+# placeholder baler, run three times. Before M5b the same settings varied by
+# about +-15 rpm in stroke_p2p_rpm between runs. With the noise sources and
+# the pulse phase restarted on preset, the runs should now differ by under
+# 5 rpm: see stroke_p2p_rpm_mean and _sd in metrics_summary.csv, and the
+# spread of the three rows in metrics.csv. About 3 minutes, pedal clamped.
+#   python sweep.py scripts/sweep_repeat_baler.yaml --port COM3 --out <folder>
+load: {preset: baler}
+settle_s: 8
+run_s: 30
+tail_s: 4
+repeats: 3
+base: {govKd: 0}
+sets:
+  - {govKp: 11, govKi: 1, govFlt: 2}

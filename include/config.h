@@ -97,3 +97,9 @@ constexpr float PMAX_DEFAULT_KW  = 80.0f;
 constexpr float UDC_DEFAULT_V        = 360.0f; // tractor pack nominal
 constexpr float MOTOR_TEMP_DEFAULT_C = 40.0f;
 constexpr float INV_TEMP_DEFAULT_C   = 40.0f;
+
+// Reported speed noise (set noise <rpm>). Its shape is fitted from the
+// tractor logs of 7 Nov 2026 by tools/fit_noise.py (plan item I6); white
+// noise (noise_fc 0) stays the default so old scripts behave as before.
+constexpr float NOISE_FC_DEFAULT_HZ = 0.0f;
+constexpr float NOISE_BW_DEFAULT_HZ = 4.0f;

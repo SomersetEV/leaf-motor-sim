@@ -1,0 +1,44 @@
+# Plan item I3: on every push, the unit tests for lib/, the PC tool
+# self-test (with Linux g++) and the firmware build. Nothing here touches
+# hardware; bench tests stay with Ben.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Native tests and tool self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - name: Install PlatformIO and tool requirements
+        run: pip install platformio -r tools/requirements.txt
+      - name: Unit tests (pio test -e native)
+        run: pio test -e native
+      - name: Tool self-test
+        run: python tools/selftest.py
+
+  firmware:
+    name: Firmware build (tcan485)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache PlatformIO platforms and toolchains
+        uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Build
+        run: pio run -e tcan485
