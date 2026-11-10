@@ -557,7 +557,7 @@ Score every run with the metrics in section 9. Pick two or three candidate setti
 
 ## 11. Milestones and acceptance criteria
 
-Ten milestones, each ending in a test Ben can run. M4 does not depend on M1 to M3 and can be built first if tractor logging is the priority. M7 needs M4 and M6.
+Each milestone ends in a test Ben can run. M4 does not depend on M1 to M3 and can be built first if tractor logging is the priority. M7 needs M4 and M6. M5b to M5d were added on 10 Nov 2026 and need no tractor data. Phase 2 milestones M10 to M13 are in section 14, and Phase 3 milestones M14 to M17 in section 17.
 
 | # | Milestone | Built by | Acceptance |
 | --- | --- | --- | --- |
@@ -567,6 +567,9 @@ Ten milestones, each ending in a test Ben can run. M4 does not depend on M1 to M
 | M4 | Part B firmware on branch `gov-logging` | Claude, Ben tests | Golden test passes before and after. With `GovLog` off, no new frames appear. With it on, `0x4A0` and `0x4A1` appear at 10 ms and decode sensibly through the DBC. |
 | M5 | Loads, presets, console, telemetry, events | Claude, Ben tests | `load step` and `load pulse` visibly disturb speed. `0x4B0` to `0x4B2` decode through the DBC. Jitter stays inside ± 0.5 ms with streaming on. |
 | M5a | Zombie governor gains over CAN SDO, scripted sweeps | Claude, Ben tests | `zset` and `zget` change and read `govKp`, `govKi`, `govKd`, `govImax`, `govFlt` and `revlim` on the bench Zombie, and the web interface agrees. Each write appears as a `0x4B2` event. A sweep script runs a list of gain sets against a preset or profile unattended and writes a metrics table. `canlog` captures the bench bus with no dropped frames, and `loglib` decodes it. |
+| M5b | Review improvements, section 15 | Claude, Ben answers the ASK items | Every row of the section 15 table meets its "Done when". |
+| M5c | Loop calculator and software-in-the-loop, section 16 | Claude | The Zombie golden test passes through the harness. Three bench runs reproduce: ring period within 10 %, stroke ripple within 15 %. |
+| M5d | Gain search, section 16 | Claude, Ben tests | A ranked table from the search, and its top three confirmed on the bench in the same order. |
 | M6 | SD profiles and PC tools | Claude | Tool self-test recovers known parameters within 5 %. A generated profile replays from SD and matches its source torque trace in `0x4B0`. |
 | M7 | Tractor capture, runs R1 to R7 | Ben | Seven sets of raw logs with `GovLog` on. `extract_params.py` and `make_profile.py` run on them without manual editing. |
 | M8 | Validation, section 10 | Ben, Claude analyses | All four validation steps inside tolerance, or a written list of what does not match and why. |
@@ -595,7 +598,7 @@ The Zombie's SDO server is node 3 on CAN1 (`sdo.SetNodeId(3)` in `stm32_vcu.cpp`
 
 ### Later extensions, not to be built now
 
-- Software-in-the-loop on the PC: link `lib/plant` and `lib/loads` with the Zombie's `throttle.cpp` in a host build, to sweep hundreds of gain sets in seconds before any bench run.
+- Software-in-the-loop on the PC: moved into the plan as M5c on 10 Nov 2026, see section 16.
 - Throttle output from an I2C DAC and driven digital inputs, for fully scripted driver input.
 - SavvyCAN connection through the simulator itself using the GVRET protocol.
 - Two-mass driveline with shaft compliance and backlash.
@@ -746,3 +749,161 @@ Extend `compare_runs.py` with overshoot, settling time, sag, recovery time, inte
 | M11 | Simulator additions | Claude, Ben tests | Pedal, brake, backlash, `rptdelay` and overrun all work from the console and show in `0x4B3` |
 | M12 | Test suite S1–S10 scripted | Claude | All ten run unattended from `run_script.py` and produce a metrics table |
 | M13 | Tuned candidates and first tractor trial | Ben, Claude analyses | Two or three settings pass S1–S10; first yard trial at low `spdmax` only after S7 passes |
+
+## 15. Review of 10 Nov 2026: improvements
+
+A review of the repo on 10 Nov 2026 found eleven things worth fixing before more tuning work. They form milestone M5b. None needs tractor data.
+
+Section 2 still applies. Work down the table and stop at the end of the milestone for Ben. Items marked **ASK** need Ben's answer before any work on them.
+
+| # | Item | What to do | Done when |
+| --- | --- | --- | --- |
+| I1 | Documents out of date | Re-check every Zombie fact in `CLAUDE.md` against the Stm32-vcu working tree. On 10 Nov the local `Tractor-RPM-limiting-testing` carried the governor logging commits, and `28d53d0` (8 Nov) had moved `MGChgLimRaw` to ID 164. If that holds, the ID 162 clash is gone and the next free parameter ID is 165. Also fix the two test counts in `CLAUDE.md` (64 and 66, 21 and 22), the README status table and console list, and this plan: section 3 (SavvyCAN node), section 4 (CAN pins, file layout) and V4 in section 12. | No statement in the three files contradicts the two trees. |
+| I2 | Untracked data | **ASK** Ben. Proposal: commit `docs/tractor/`, keep `logs/` out of git with `.gitignore`, and commit each sweep's `metrics.csv` and YAML under `docs/bench/results/<date>_<name>/`. | `git status` is clean, and each number in `docs/bench/M5a_*` traces to a file. |
+| I3 | Continuous integration | GitHub Actions on push: `pio test -e native`, `python tools/selftest.py` with Linux g++, and `pio run -e tcan485`. | A green run on `main`. |
+| I4 | Tests for `sweep.py` | Both sweep bugs so far were in this file, and it has no test. Add a fake console to `selftest.py`, as `run_script` has. Cover canlog lines mixed with replies, a late `ok` after a gradient ramp, the integral clear, and gains restored after an error. | New checks pass in `selftest.py`. |
+| I5 | Repeatable sweeps | The same settings vary by about ±15 rpm between runs. Reset both noise seeds and the pulse phase on `preset` and on `mark`. Add `repeats: N` to the sweep YAML, and report the mean and standard deviation of each metric. | One set run three times differs by under 5 rpm in `stroke_p2p_rpm`. |
+| I6 | Coloured speed noise | The simulator's speed noise is white per tick. The tractor's is a ripple at about 6–10 Hz, so `sweep_road.yaml` uses a different noise level for each `govFlt`. Add a parameter `noise_hz` (0 keeps white noise) for band-limited noise centred on that frequency, in `lib/` and mirrored in the PC tools. Fit the level and band from `logs/session_0011.csv` and `session_0012.csv`. Then remove the per-`govFlt` levels from `sweep_road.yaml`. | With one setting, the noise that passes the governor filter matches the tractor within 20 % at shifts 4 and 2. |
+| I7 | Report delay | Bring `rptdelay` forward from section 14: 0–50 ms of delay on the speed in `0x1DA`. It is needed for the delay-margin checks in sections 16 and 17. | A unit test passes, and `params` shows it. |
+| I8 | Metrics | Add to `metrics.py`: integrated absolute error, ring period and decay ratio after a step (which give a phase-margin estimate), and torque RMS as a measure of actuator effort. Add one `cost()` function, shared by the sweep, the software-in-the-loop harness and the gain search. | Self-test on known signals. |
+| I9 | Tractor logger (V6) | M7 is blocked: the telematics logger keeps about 15 % of frames in run mode. **ASK** Ben which route to take: fix that logger, or add a listen-only logger build of this firmware (`TWAI_MODE_LISTEN_ONLY`, the filtered `canlog` IDs, binary records written to SD from a core-0 task, about 8 kB/s). | A 10-minute bench log with no gaps in the `0x4A1` counter. |
+| I10 | SD transfer over serial | Apply the stash, capture the panic backtrace from `sd ls`, and fix it. Suspects are the console task's stack size and SD access from the wrong task. | `sd ls` and `sd get` work, and `topper.json` is off the card. |
+| I11 | Two small code checks | In `src/sim_task.cpp`, `apply()` ignores a failed `param_set`. In `src/can_io.cpp`, the `0x1D4` latch decodes with `K_T_DEFAULT`, while the tick uses the `kT` parameter. Confirm each is harmless, or fix it. | A note in the commit message. |
+
+## 16. Tuning improvements
+
+Tuning so far has been by bench sweep, at 30 to 90 seconds per gain set. This section adds a model of the loop that says where to look, a PC harness that runs the Zombie's own governor code against the plant in milliseconds, and a search over that harness. The bench then confirms a short list instead of exploring.
+
+### Loop model
+
+The plant is an integrator: motor torque into one inertia. Around it sit three lags:
+
+| Lag | Size |
+| --- | --- |
+| Governor speed filter | 155 ms at `govFlt` 4, 75 ms at 3, 35 ms at 2, 14 ms at 1 |
+| Motor torque lag `tau` | 30 ms |
+| Transport | About 20 ms: the governor uses the previous tick's speed, plus sampling |
+
+In physical units, `govKp` 1 (0.01 % per rpm) is 0.489 Nm per rad/s at `kT` 0.25. With P only, the loop gain is
+
+```latex
+L(j\omega) = \frac{K_p}{J\,j\omega}\cdot\frac{1}{1+j\omega\tau_f}\cdot\frac{1}{1+j\omega\tau}\cdot e^{-j\omega\theta}
+```
+
+where τ_f is the filter lag and θ the transport delay. Stability therefore depends on `govKp` divided by inertia, and the usable `govKp` is proportional to inertia.
+
+A hand calculation for `govKp` 11 and J 0.30 kg·m² matches the M4 bench:
+
+| `govFlt` | Predicted crossover | Predicted margin and ring | Measured ring (M4) |
+| --- | --- | --- | --- |
+| 4 | 9.5 rad/s | About 7°, 660 ms | 630 ms, each cycle 0.65 of the last (about 7°) |
+| 2 | 14.6 rad/s | About 21°, 400 ms | 370 ms, each cycle 0.35 of the last (about 17°) |
+
+Inertia is not one number on this machine. The placeholder presets and the 7 Nov tractor logs span about ten to one: 0.30 at no load, 0.90 for the baler, and 2.5 to 3.5 on the road. No fixed `govKp` suits that range. At shift 4, `govKp` 11 is near the stability limit at J 0.3, and two to three times softer than it could be at J 2.5.
+
+The model gives these starting values. They are predictions from placeholder inertias, to be confirmed in the harness and then on the bench:
+
+| `govFlt` | `govKp` for about 45° margin | At J 0.3 | At J 0.9 | At J 2.5 |
+| --- | --- | --- | --- | --- |
+| 4 | About 10 × J | 3 | 9 | 25 |
+| 2 | About 20 × J | 6 | 18 | 50 |
+
+- Shift 2 about doubles the usable `govKp`. Try shift 1 once coloured noise (I6) is in.
+- Set `govKi` from `govKp`. The integral time Ti is `govKp` / (10 × `govKi`) seconds, so `govKp` 11 with `govKi` 1 is 1.1 s. Aim for Ti of about 4 divided by the crossover in rad/s.
+- Try `govImax` at about 60. Above about 55 % the motor is already at its 280 Nm limit, so a larger integral only adds wind-up.
+- Add road sets at `govKp` 20 to 30 with shift 2 to `sweep_road.yaml`.
+
+Build `tools/loopcalc.py`: from `govKp`, `govKi`, `govKd`, `govFlt`, J, `tau` and delay, it prints the crossover, the phase and gain margins and the predicted ring period. Keep the unit conversions in that one file.
+
+### Software-in-the-loop harness (M5c)
+
+`tools/sil/` holds a PC program that links the Zombie's `throttle.cpp` and `govlog.cpp`, as `Stm32-vcu/test/Makefile` already does, with this repo's `lib/plant`, `lib/loads` and `lib/leafcodec`. The Zombie path comes from `--zombie` or `ZOMBIE_DIR`, and the Zombie commit hash is written to the output.
+
+Each 10 ms step, in order:
+
+1. Decode the speed from the previous tick's `0x1DA` with the Zombie's own expression, so the governor sees whole rpm one tick late.
+2. Call `SpeedLimitCommand`, then `RampThrottle`.
+3. Convert percent to the raw request, encode `0x1D4` and decode it.
+4. Run ten plant sub-steps.
+5. Encode `0x1DA` with the speed noise and report delay.
+
+The voltage, current and temperature derates are left out, and the output says so.
+
+The harness reads the same sweep YAML as `sweep.py`. It writes a candump log with `0x4A0`–`0x4A3` and `0x4B0`–`0x4B2`, so `loglib` and `sweep.score()` work on it unchanged. `sweep.py --port sil` runs a sweep against it.
+
+Acceptance:
+
+- The Zombie golden test inputs give the golden outputs through the harness.
+- Three existing bench runs reproduce: ring period within 10 % and stroke ripple within 15 %. If the bench logs cannot be found, run them again, which needs Ben's pedal clamp.
+- `loopcalc.py` and the harness agree on ring period within 10 %.
+
+### Gain search (M5d)
+
+`tools/tune_search.py` searches over the harness.
+
+| Part | Choice |
+| --- | --- |
+| Variables | `govKp`, `govKi`, `govKd`, `govFlt`, `govImax` |
+| Scenarios | Fast hit on the limit, baler, road gradient ramp, PTO step with an inertia change |
+| Each candidate must hold across | J from 0.7 to 1.4 times nominal, `tau` 20–45 ms, extra delay 0–20 ms, tractor-level speed noise |
+| Hard limits | No-load ring decays to under 0.25 per cycle in every case; an overshoot limit set by Ben |
+| Then minimise | `cost()` from I8: speed error, stroke ripple and torque effort |
+| Method | Coarse grid, then refinement with `scipy` |
+
+The output is a ranked table and a sweep YAML holding the top three, for confirmation on the bench. If the bench ranks them differently, report the difference and treat it as a model fault to find.
+
+### Governor changes to evaluate in the harness only
+
+These four change control logic. None goes into a Zombie branch without Ben's sign-off, and each must sit behind a parameter whose default leaves today's governor unchanged, bit for bit.
+
+| # | Change | Reason |
+| --- | --- | --- |
+| G1 | Clear the integral when `govKi` is 0 | Today it stays frozen at its last value, which spoiled the second road sweep. |
+| G2 | Make the D-term slope filter shift a parameter | It is fixed at shift 4 (about 155 ms) whatever `govFlt` is, so `govKd` lags at the stroke frequency. |
+| G3 | Schedule `govKp` on inertia | Section 17. |
+| G4 | Feed-forward from a load-torque observer | Keep it only if it beats G3 at the same stability margin. |
+
+## 17. Phase 3: governor auto-tune
+
+Phase 3 lets the governor find its own gains for whatever is on the shaft: first on demand, then continuously while working. Do not start it without Ben. It changes Zombie control logic, so the logging-only rule does not cover it, and it needs M5c and M5d first.
+
+The tuner lives in the Zombie firmware, on a new branch `gov-autotune`. It is not an external device writing SDO to a moving tractor. All of its logic is one plain C++ module, `govtune`, with no hardware includes, so the same code runs in host tests, in the harness and on the Zombie.
+
+### Three parts
+
+**Tune now.** On request at governed speed, a relay replaces the governor output: the mean torque plus or minus `govTuneAmp` %, switched on the sign of the speed error with hysteresis, for about ten cycles. The speed then oscillates with amplitude a and period Tu. The ultimate gain is Ku = 4d / (π a), where d is the relay amplitude. Start from `govKp` = 0.4 Ku and an integral time of Tu. This measures inertia and every lag together, with no model. The test aborts on pedal lift, brake, speed leaving a window, or torque clipping.
+
+**Continuous inertia estimate.** While the governor is the binding limit, add a small sine to its output. Start with 3 Hz at ±2 %, which moves speed by about 6 rpm at J 0.9, less than the ripple already there. Demodulate both the total torque command and the raw speed at the probe frequency, over whole cycles. Their ratio is the plant response at that frequency. Load does not bias it, because the probe is uncorrelated with the load. The response gives the effective inertia J_est. Then:
+
+- `govKp` = Kp_ref × J_est / J_ref, with `govKi` following to keep the integral time;
+- both clamped to a range and changed by no more than about 10 % per second;
+- the estimate frozen whenever the governor is not binding.
+
+**Oscillation watchdog.** Whenever gains are being applied, sustained ringing near the crossover frequency cuts `govKp` by 30 % and holds it there, with a flag in the log.
+
+### Modes and logging
+
+Parameter `govTune`:
+
+| Value | Behaviour |
+| --- | --- |
+| 0 Off | Today's governor, bit for bit. The golden test must pass. Default. |
+| 1 Estimate | The probe and the estimate run and are logged. The gains are not touched. |
+| 2 Apply | Gains follow the estimate, with the watchdog on. |
+
+Parameter IDs start from the next free one found in I1. With `GovLog` on, a new frame `0x4A6` carries the inertia estimate, the scheduled `govKp`, the probe amplitude, the tuner state and its flags. Add it to `leaf_sim.dbc`.
+
+### Milestones
+
+| # | Milestone | Built by | Acceptance |
+| --- | --- | --- | --- |
+| M14 | `govtune` in the harness | Claude | The relay result is within 20 % of the gain search's best `govKp` at J 0.3, 0.9 and 2.5. The probe estimate is within 15 % in 3 s, with baler pulses and tractor-level noise. The watchdog recovers from a three-to-one drop in inertia within 2 s. |
+| M15 | Zombie `gov-autotune`, Estimate only | Claude, Ben tests | Golden test unchanged at `govTune` 0. On the bench, the estimate follows `set J` and `load step … dJ` changes on the simulator. |
+| M16 | Apply on the bench | Claude, Ben tests | With inertia stepped 0.3 → 0.9 → 2.5 → 0.3, ring decay stays under 0.25 per cycle, and ripple is no worse than the best fixed gain for each inertia. The same holds at `rptdelay` 20 ms. |
+| M17 | Tractor | Ben, Claude analyses | Estimate mode logged first: stationary with the PTO running, then working. The DC-DC check in section 8 applies. Apply mode only after Ben has reviewed those logs. |
+
+### A bench-only first step
+
+Before M15, and without touching the Zombie, `tools/autotune_bench.py` can do a version of this from the PC. It applies a load step, reads the ring period and decay from `canlog`, and moves `govKp` over `zset` toward a target decay. That proves the idea and the metrics on real hardware.
+
+The same estimator can later schedule `spdkp` in Phase 2 speed mode.
