@@ -16,7 +16,11 @@ python selftest.py          # needs g++ on PATH; checks every tool against synth
 | `run_script.py` | YAML script and the simulator's serial port | Timed console commands. `--stream-out` saves the CSV stream and `--canlog-out` the bus log (`canlog 1`, candump format, readable by `loglib`). Bench scripts are in `scripts/` |
 | `sweep.py` | Sweep YAML and the simulator's serial port | M5a: runs Zombie gain sets over SDO (`zset`) against a preset or SD profile, logs each run with `canlog`, and writes `metrics.csv`. It scores the no-load phase, the loaded phase, and the ring after the load comes off (`tail_s`: period, decay, phase margin), plus `cost`. A set can also set simulator model parameters (`sim: {noise: 5}`). `repeats: N` runs each set N times and writes `metrics_summary.csv`. Restores the original gains at the end. Examples: `scripts/sweep_*.yaml`; results in `../docs/bench/results/` |
 | `fit_noise.py` | Tractor logs with `0x1DA` | Fits the simulator's band-limited speed noise (`noise`, `noise_fc`, `noise_bw`) so the governor filter passes as much of it as of the tractor's ripple, and prints the check at each filter shift (plan I6) |
-| `metrics.py` | Arrays | Shared metrics, including `ring_after_step`, `phase_margin_deg` and `cost()`, the one score shared by sweeps, the future harness and the gain search |
+| `metrics.py` | Arrays | Shared metrics, including `ring_after_step`, `phase_margin_deg` and `cost()`, the one score shared by sweeps, the harness and the gain search |
+| `silport.py` | The Stm32-vcu tree (`--zombie`, `ZOMBIE_DIR` or `../Stm32-vcu`) | Builds the software-in-the-loop harness (`sil/`: the Zombie's own governor code against the simulator's own tick) and runs it as a console port in simulated time, so `sweep.py` and `run_script.py` take `--port sil`. `--golden` runs the Zombie's governor golden test through it (plan M5c) |
+| `sil_check.py` | Result folders from `../docs/bench/results/` | Re-runs each sweep through the harness at the bench's pedal and loop delay, and judges stroke ripple and ring period against the bench. `--loopcalc` checks `loopcalc.py` against the harness |
+| `sil_replay.py` | A no-load bench log with GovLog frames | Replays its pedal and Zombie settings through the harness from rest and compares the rings, as for the M4 pedal tests |
+| `loopcalc.py` | `govKp`, `govKi`, `govKd`, `govFlt`, J, `tau`, extra delay | Crossover, phase and gain margins, and the ring period and keep per cycle of the linear loop (exact discrete-time model, plan section 16). Comma lists make a table. Not for PI loops at `revlim`, where the governor acts as a relay |
 
 ## Typical flow
 
@@ -43,7 +47,9 @@ python compare_runs.py r4_tractor.csv r4_bench.csv --plot r4.png --csv r4.csv
 - the profile parses and replays through the firmware's profile code;
 - dropped-frame counting, candump and telematics parsing, the metrics (including ring decay, phase margin and `cost`), and `run_script` timing;
 - the Python mirror of the speed noise (`simmodel.speed_noise`) against the firmware's own `lib/sensor`;
-- `sweep.py` against a fake console: replies matched to their commands with canlog lines and late replies mixed in, the integral cleared, gains restored after an error, and repeats summarised.
+- `sweep.py` against a fake console: replies matched to their commands with canlog lines and late replies mixed in, the integral cleared, gains restored after an error, and repeats summarised;
+- `loopcalc.py` against the M4 bench rings and the 3 Nov `govKp` sweep's stability limit;
+- the harness (when the Stm32-vcu tree is there): the Zombie's golden test through it, a 3 Nov bench run reproduced to within 1 %, its loop delay, and `loopcalc.py` against it.
 
 ## Telematics logs
 

@@ -134,6 +134,9 @@ def main(argv=None) -> int:
     ap.add_argument("--log", help="also write the console transcript here")
     ap.add_argument("--stream-out", help="write streamed CSV lines here")
     ap.add_argument("--canlog-out", help="write canlog frames here (candump -l format)")
+    ap.add_argument("--zombie", help="--port sil: Stm32-vcu tree (default ZOMBIE_DIR or ../Stm32-vcu)")
+    ap.add_argument("--sd", help="--port sil: folder standing in for the SD card")
+    ap.add_argument("--pedal", type=float, help="--port sil: the Zombie's pedal in percent (default 100)")
     a = ap.parse_args(argv)
 
     script = load_script(open(a.script).read())
@@ -146,7 +149,6 @@ def main(argv=None) -> int:
     if not port_name:
         print("error: no serial port (use --port or 'port:' in the script)", file=sys.stderr)
         return 2
-    import serial  # pyserial
 
     logf = open(a.log, "w") if a.log else None
     streamf = open(a.stream_out, "w") if a.stream_out else None
@@ -156,6 +158,25 @@ def main(argv=None) -> int:
         print(msg)
         if logf:
             logf.write(msg + "\n")
+
+    if str(port_name).lower() == "sil":  # the PC harness, in simulated time
+        from silport import SilError, SilPort
+        try:
+            with SilPort(a.zombie, a.sd, a.pedal) as sil:
+                log(sil.banner)
+                failures = run(script, sil, log, streamf, canlog_out=canlogf,
+                               clock=sil.clock, sleep=sil.sleep)
+                log(f"done, {failures} command(s) failed")
+        except (SilError, ScriptError) as e:
+            log(f"stopped: {e}")
+            return 1
+        finally:
+            for f in (logf, streamf, canlogf):
+                if f:
+                    f.close()
+        return 1 if failures else 0
+
+    import serial  # pyserial
 
     # Open with DTR and RTS released: asserting them on open can pulse the
     # ESP32's auto-reset circuit and reboot the simulator mid-test.

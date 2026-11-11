@@ -271,6 +271,43 @@ def stream_gaps(t, factor: float = 3.0):
     return len(gaps), float(gaps.sum()), float(gaps.max()) if len(gaps) else 0.0
 
 
+def loop_delay_ticks(log: Log) -> float:
+    """Mean number of simulator ticks from a 0x1DA speed sample to the tick
+    that applies the torque the Zombie worked out from it (plan section 16).
+
+    The Zombie's governor uses the speed it read at the end of its previous
+    tick, and sends the result in the 0x1D4 of its next tick; the simulator
+    applies it at its first tick after that frame. On the bench that is 3
+    ticks, or 4 while the two clocks' phase puts the 0x1D4 just after the
+    simulator's tick (the phase drifts by about 1.7 ms a minute). Each 0x4A0
+    is matched to the 0x1DA whose whole-rpm speed it carries; ambiguous
+    matches (the same speed in two recent ticks) are skipped. NaN without
+    governor frames. The harness (tools/sil) is always 3; set rptdelay 10
+    there for 4."""
+    s, z, r = log.raw.get("INV_Status_1DA"), log.raw.get("GOV_Speed_4A0"), log.raw.get("VCM_TorqueCmd_1D4")
+    if s is None or z is None or r is None or min(len(s), len(z), len(r)) < 50:
+        return float("nan")
+    ts = s["t"].to_numpy(dtype=float)
+    sp = np.floor(np.abs(s["MotorSpeed"].to_numpy(dtype=float)) + 1e-6)
+    tz = z["t"].to_numpy(dtype=float)
+    gz = z["GovSpeedIn"].to_numpy(dtype=float)
+    tr = r["t"].to_numpy(dtype=float)
+    out = []
+    for k in range(len(tz) - 1):
+        hi = int(np.searchsorted(ts, tz[k]))
+        cand = list(range(hi - 1, max(-1, hi - 5), -1))
+        hits = [i for i in cand if sp[i] == gz[k]]
+        if len(hits) != 1:
+            continue
+        j = int(np.searchsorted(tr, tz[k + 1]))  # the 0x1D4 sent in the Zombie's next tick
+        if j >= len(tr):
+            break
+        latch = int(np.searchsorted(ts, tr[j]))  # the simulator tick after it
+        if latch < len(ts):
+            out.append(latch - hits[0])
+    return float(np.mean(out)) if len(out) >= 20 else float("nan")
+
+
 def speed_rpm(log: Log) -> pd.Series:
     """Best available motor speed in rpm (signed where possible)."""
     if log.has(SPEED):

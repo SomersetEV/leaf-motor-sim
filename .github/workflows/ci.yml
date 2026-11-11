@@ -13,6 +13,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The Zombie tree, for the software-in-the-loop checks in the self-test
+      # (plan M5c). Only libopeninv is needed of its submodules.
+      - uses: actions/checkout@v4
+        with:
+          repository: SomersetEV/Stm32-vcu
+          ref: Tractor-RPM-limiting-testing
+          path: Stm32-vcu
+      - name: Zombie submodule libopeninv
+        run: git -C Stm32-vcu submodule update --init libopeninv
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -23,6 +32,8 @@ jobs:
       - name: Unit tests (pio test -e native)
         run: pio test -e native
       - name: Tool self-test
+        env:
+          ZOMBIE_DIR: ${{ github.workspace }}/Stm32-vcu
         run: python tools/selftest.py
 
   firmware:

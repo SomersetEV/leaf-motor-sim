@@ -38,6 +38,8 @@ Same wiring as M5a: the Zombie in Run mode, the pedal clamped (100 % is simplest
 
    Three runs of Kp 11, Ki 1, `govFlt` 2 on the baler, about 3 minutes. In `metrics.csv`, the three `stroke_p2p_rpm` values should be within 5 rpm of each other (before M5b they varied by about ±15). Each row now also has `ring_period_s`, `ring_decay`, `ring_pm_deg` and `cost`.
 
+   Compare only runs with the same `loop_ticks` (added in M5c). The Zombie's and the simulator's clocks drift by about 1.7 ms a minute, and while the drift puts the Zombie's 0x1D4 just after the simulator's tick, the loop has 4 ticks of delay instead of 3. In the 3 Nov sweeps, the same settings gave 238 rpm at 3 ticks and 268 rpm at 4 (`docs/bench/M5c_sil.md`, finding 1). If the three runs straddle the boundary, run the sweep again.
+
 4. **Road sweep.**
 
    ```text

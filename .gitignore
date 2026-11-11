@@ -6,3 +6,6 @@ __pycache__/
 # Raw tractor and bench logs: large, kept outside git (plan item I2).
 # Sweep tables go in docs/bench/results/ instead.
 logs/
+
+# Software-in-the-loop harness, built by tools/silport.py
+tools/sil/build/

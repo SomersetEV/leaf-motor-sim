@@ -313,6 +313,7 @@ def score(bus_log: Path, revlim: float) -> dict:
     m["binding_frac"] = (float(np.nanmean(g[loglib.GOV_BINDING].to_numpy(dtype=float)[ld] > 0.5))
                          if log.has(loglib.GOV_BINDING) else float("nan"))
     m["dropped_4a1"] = log.dropped_4a1
+    m["loop_ticks"] = loglib.loop_delay_ticks(log)  # 3, or 4 at some clock phases
     m["cost"] = mt.cost(m)
     return m
 
@@ -437,28 +438,42 @@ def summarise(rows: list[dict]) -> list[dict]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sweep")
-    ap.add_argument("--port", required=True)
+    ap.add_argument("--port", required=True, help="serial port, or 'sil' for the PC harness (tools/sil)")
     ap.add_argument("--baud", type=int, default=921600)
     ap.add_argument("--out", required=True, help="folder for bus logs and metrics.csv")
+    ap.add_argument("--zombie", help="sil: Stm32-vcu tree (default ZOMBIE_DIR or ../Stm32-vcu)")
+    ap.add_argument("--sd", help="sil: folder standing in for the SD card (presets/, profiles/)")
+    ap.add_argument("--pedal", type=float, help="sil: the Zombie's pedal in percent (default 100)")
     a = ap.parse_args(argv)
 
     s = load_sweep(open(a.sweep).read())
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    import serial  # pyserial
+    try:
+        if a.port.lower() == "sil":
+            from silport import SilError, SilPort
+            try:
+                with SilPort(a.zombie, a.sd, a.pedal) as port:
+                    print(port.banner)
+                    (out / "sil_info.txt").write_text(port.banner + "\n")
+                    rows = run_sweep(s, Console(port, clock=port.clock, sleep=port.sleep), out)
+            except SilError as e:
+                print(f"stopped: {e}", file=sys.stderr)
+                return 1
+        else:
+            import serial  # pyserial
 
-    sp = serial.Serial(baudrate=a.baud, timeout=0.02)
-    sp.port = a.port
-    sp.dtr = False  # released, so opening cannot reset the ESP32
-    sp.rts = False
-    sp.open()
-    with sp:
-        sp.reset_input_buffer()
-        try:
-            rows = run_sweep(s, Console(LinePort(sp)), out)
-        except SweepError as e:
-            print(f"stopped: {e}", file=sys.stderr)
-            return 1
+            sp = serial.Serial(baudrate=a.baud, timeout=0.02)
+            sp.port = a.port
+            sp.dtr = False  # released, so opening cannot reset the ESP32
+            sp.rts = False
+            sp.open()
+            with sp:
+                sp.reset_input_buffer()
+                rows = run_sweep(s, Console(LinePort(sp)), out)
+    except SweepError as e:
+        print(f"stopped: {e}", file=sys.stderr)
+        return 1
     write_table(rows, out / "metrics.csv")
     print(f"done: {len(rows)} runs, table in {out / 'metrics.csv'}")
     if int(s.get("repeats", 1)) > 1:

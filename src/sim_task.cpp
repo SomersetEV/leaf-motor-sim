@@ -8,12 +8,9 @@
 
 #include "can_io.h"
 #include "config.h"
-#include "gauss.h"
-#include "param_table.h"
-#include "speed_report.h"
+#include "sim_engine.h"
 #include "spsc_ring.h"
 
-using simproto::CmdType;
 using simproto::SimCmd;
 
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -24,217 +21,89 @@ static simcore::SpscRing<simproto::StreamSample, STREAM_RING_LEN> s_ring;
 static std::atomic<bool> s_stream_on{false};
 static std::atomic<uint32_t> s_stream_div{1};
 
-// State owned by the tick task
-static SimParams s_params;
-static plant::Plant *s_plant;
-static loads::Loads *s_loads;
-static sensor::SpeedReport *s_report;
-static bool s_inv_fault = false;
-static uint8_t s_preset_id = 0;
-static char s_preset_name[16] = "";
+static SimParams s_initial;  // parameters at power-up, until the task builds the engine
 
-static void send_event(uint8_t ev, uint16_t value, uint32_t now_ms) {
-    uint8_t b[8];
-    simproto::pack_4b2(ev, value, now_ms, b);
-    can_send(ID_SIM_EVENT, b, 8);
+// Frames from the engine go straight to the CAN driver, which also copies
+// them to the bus log.
+class CanSink : public simengine::FrameSink {
+public:
+    void send(uint32_t id, const uint8_t *data, uint8_t dlc) override { can_send(id, data, dlc); }
+};
+
+static simengine::Config engine_config() {
+    simengine::Config c;
+    c.tick_ms = TICK_MS;
+    c.substeps = SUBSTEPS_PER_TICK;
+    c.slow_period_ticks = SLOW_PERIOD_TICKS;
+    c.load_noise_seed = LOAD_NOISE_SEED;
+    c.speed_noise_seed = SPEED_NOISE_SEED;
+    c.report_torque = SIM_REPORT_TORQUE != 0;
+    c.id_inv_status = ID_LEAF_INV_STATUS;
+    c.id_inv_temps = ID_LEAF_INV_TEMPS;
+    c.id_sim_fast = ID_SIM_FAST;
+    c.id_sim_slow = ID_SIM_SLOW;
+    c.id_sim_event = ID_SIM_EVENT;
+    return c;
 }
 
-static uint16_t nm_value(float nm) { return (uint16_t)(int16_t)lroundf(nm); }
-
-// Both noise sources restart on preset and mark, so the same script gives the
-// same run (plan item I5). The pulse phase restarts on preset (configure) and
-// load pulse, but not on mark, which scripts also send mid-stroke.
-static void reseed() {
-    s_loads->reseed(LOAD_NOISE_SEED);
-    s_report->reseed(SPEED_NOISE_SEED);
-}
-
-static sensor::ReportParams report_params(const SimParams &p) {
-    sensor::ReportParams r;
-    r.noise_rpm = p.noise_rpm;
-    r.noise_fc_hz = p.noise_fc_hz;
-    r.noise_bw_hz = p.noise_bw_hz;
-    r.delay_ms = p.rptdelay_ms;
-    return r;
-}
-
-// Applies one queued command. Runs at the start of a tick.
-static void apply(const SimCmd &c, uint32_t now_ms) {
-    switch (c.type) {
-    case CmdType::SetParam:
-        // The console range-checks before posting, so this cannot fail today;
-        // the event is only sent for a value that was taken.
-        if (!simcore::param_set(s_params, c.i, c.f[0])) break;
-        s_plant->set_params(s_params.plant);
-        send_event(simproto::EV_PARAM, (uint16_t)c.i, now_ms);
-        break;
-    case CmdType::Preset:
-        s_params = c.preset.params;
-        s_plant->set_params(s_params.plant);
-        s_loads->configure(c.preset.loads);
-        reseed();
-        s_preset_id = c.preset.id;
-        memcpy(s_preset_name, c.preset.name, sizeof(s_preset_name));
-        send_event(simproto::EV_PRESET, c.preset.id, now_ms);
-        break;
-    case CmdType::LoadStep:
-        s_loads->start_step(c.f[0], c.f[1], c.f[2]);
-        send_event(simproto::EV_LOAD, nm_value(c.f[0]), now_ms);
-        break;
-    case CmdType::LoadPulse:
-        s_loads->start_pulse(c.f[0], c.f[1], c.f[2]);
-        send_event(simproto::EV_LOAD, nm_value(c.f[0]), now_ms);
-        break;
-    case CmdType::LoadGrad:
-        s_loads->set_grad(c.f[0]);
-        send_event(simproto::EV_LOAD, nm_value(c.f[0]), now_ms);
-        break;
-    case CmdType::LoadNoise:
-        s_loads->set_noise(c.f[0], c.f[1]);
-        send_event(simproto::EV_LOAD, nm_value(c.f[0]), now_ms);
-        break;
-    case CmdType::LoadOff:
-        s_loads->off();
-        send_event(simproto::EV_LOAD, 0, now_ms);
-        break;
-    case CmdType::ProfileSet:
-        s_loads->set_profile(c.profile);
-        break;
-    case CmdType::ProfileStart:
-        if (s_loads->profile_start()) send_event(simproto::EV_PROFILE_START, 0, now_ms);
-        break;
-    case CmdType::ProfileStop:
-        if (s_loads->profile_state() == loads::ProfileState::Running) {
-            uint32_t row = s_loads->profile_row();
-            s_loads->profile_stop();
-            send_event(simproto::EV_PROFILE_STOP, (uint16_t)(row > 65535 ? 65535 : row), now_ms);
-        }
-        break;
-    case CmdType::ProfileLoop:
-        s_loads->set_profile_loop(c.i != 0);
-        break;
-    case CmdType::ProfileExp:
-        s_loads->set_profile_exponent(c.f[0], c.f[1]);
-        break;
-    case CmdType::Mark:
-        reseed();
-        send_event(simproto::EV_MARKER, (uint16_t)c.i, now_ms);
-        break;
-    case CmdType::FaultInv:
-        s_inv_fault = c.i != 0;
-        break;
-    case CmdType::ZParamEvent:
-        send_event(simproto::EV_ZPARAM, (uint16_t)c.i, now_ms);
-        break;
-    }
-}
-
-// Nothing in here may block: no serial, no SD, no heap (plan rule 4).
+// Nothing in here may block: no serial, no SD, no heap (plan rule 4). The
+// tick itself is lib/simengine, which the PC harness (tools/sil) also runs.
 static void sim_task(void *) {
     simcore::TickStats stats(TICK_MS * 1000, TICK_TOLERANCE_US, JITTER_WINDOW_TICKS);
-    plant::Plant model(s_params.plant);
-    loads::Loads loads(LOAD_NOISE_SEED);
-    const float dt_tick = TICK_MS / 1000.0f;
-    const float dt_sub  = dt_tick / SUBSTEPS_PER_TICK;
-    sensor::SpeedReport report(dt_sub * 1000.0f, dt_tick, SPEED_NOISE_SEED);
-    s_plant = &model;
-    s_loads = &loads;
-    s_report = &report;
+    static simengine::Engine engine(engine_config(), s_initial);  // static: off the task stack
+    CanSink sink;
     TickType_t wake = xTaskGetTickCount();
     int64_t prev_us = esp_timer_get_time();
-    uint32_t tick = 0;
-    uint8_t b[8];
     SimCmd cmd_in;
 
     for (;;) {
         BaseType_t delayed = xTaskDelayUntil(&wake, pdMS_TO_TICKS(TICK_MS));
         int64_t now_us = esp_timer_get_time();
-        if (tick > 0) stats.record((uint32_t)(now_us - prev_us), delayed == pdFALSE);
+        if (engine.ticks() > 0) stats.record((uint32_t)(now_us - prev_us), delayed == pdFALSE);
         prev_us = now_us;
         uint32_t now_ms = (uint32_t)pdTICKS_TO_MS(xTaskGetTickCount());
 
         // Console commands, applied between ticks
-        while (xQueueReceive(s_cmd_queue, &cmd_in, 0) == pdTRUE) apply(cmd_in, now_ms);
+        while (xQueueReceive(s_cmd_queue, &cmd_in, 0) == pdTRUE) engine.apply(cmd_in, now_ms, sink);
 
-        // 1. Latest torque request; zero torque after the 100 ms timeout
-        leafcodec::Cmd1D4 cmd;
-        bool fresh = can_get_cmd(now_ms, cmd);
-        float t_req = fresh ? cmd.raw * s_params.k_t : 0.0f;
+        // The latest torque request (zero torque after the 100 ms timeout),
+        // then the tick: loads, model, 0x1DA, telemetry
+        simengine::TickIn in;
+        in.now_ms = now_ms;
+        in.fresh = can_get_cmd(now_ms, in.cmd);
+        in.bus_error = can_bus_error_within(now_ms, STATUS_WINDOW_MS);
+        in.rejected_1d4 = can_rejected_1d4();
+        in.overruns = stats.overruns();
+        in.worst_jitter_us = stats.window_worst_jitter_us();
+        uint32_t tick = engine.ticks();
+        simengine::TickOut o = engine.tick(in, sink);
+        const plant::Plant &model = engine.plant();
+        const loads::Loads &loads = engine.loads();
 
-        // 2. Loads and profile advance one tick; inertia follows them
-        loads::ProfileState prof_before = loads.profile_state();
-        loads::LoadOutput lo = loads.tick(model.w_rad_s(), dt_tick);
-        float j = lo.profile_inertia ? lo.profile_inertia_kgm2
-                                     : s_params.plant.j_kgm2 + lo.inertia_delta_kgm2;
-        model.set_inertia(j);
-        if (prof_before == loads::ProfileState::Running &&
-            loads.profile_state() == loads::ProfileState::Finished) {
-            uint32_t rows = loads.profile() ? loads.profile()->rows() : 0;
-            send_event(simproto::EV_PROFILE_STOP, (uint16_t)(rows > 65535 ? 65535 : rows), now_ms);
-        }
-
-        // 3. Ten 1 ms model sub-steps, each recorded for the report delay
-        for (uint32_t i = 0; i < SUBSTEPS_PER_TICK; i++) {
-            model.substep(t_req, lo.tick, dt_sub);
-            report.push(model.rpm());
-        }
-        float rpm = model.rpm();
-        // Delay and measurement noise go on the reported speed only, never the model
-        float rpm_reported = report.report(report_params(s_params));
-
-        // 4. Inverter status, then fast telemetry
-#if SIM_REPORT_TORQUE
-        float t_reported = model.t_motor_nm();  // after the envelope and lag
-#else
-        float t_reported = 0.0f;
-#endif
-        leafcodec::encode_1da(s_params.udc_v, rpm_reported, t_reported, s_inv_fault, b);
-        can_send(ID_LEAF_INV_STATUS, b, 8);
-        simproto::pack_4b0(rpm, t_req, model.t_motor_nm(), model.t_load_nm(), b);
-        can_send(ID_SIM_FAST, b, 8);
-
-        uint8_t flags = 0;
-        if (!fresh) flags |= simproto::FLAG_RX_TIMEOUT;
-        if (model.clipping()) flags |= simproto::FLAG_CLIPPING;
-        if (s_params.noise_rpm > 0.0f || loads.config().noise_on) flags |= simproto::FLAG_NOISE;
-        if (s_inv_fault) flags |= simproto::FLAG_FAULT;
-        if (can_bus_error_within(now_ms, STATUS_WINDOW_MS)) flags |= simproto::FLAG_BUS_ERROR;
-
-        // 5. Every tenth tick: temperatures and slow telemetry
-        if (tick % SLOW_PERIOD_TICKS == 0) {
-            leafcodec::encode_55a(s_params.motor_c, s_params.inv_c, b);
-            can_send(ID_LEAF_INV_TEMPS, b, 8);
-            simproto::SlowTelemetry st{j, s_preset_id, (uint8_t)loads.profile_state(), flags,
-                                       can_rejected_1d4(), stats.overruns(),
-                                       stats.window_worst_jitter_us()};
-            simproto::pack_4b1(st, b);
-            can_send(ID_SIM_SLOW, b, 8);
-        }
-
-        // 6. Sample for CSV streaming; dropped (and counted) if the console lags
+        // Sample for CSV streaming; dropped (and counted) if the console lags
         uint32_t div = s_stream_div.load(std::memory_order_relaxed);
         if (s_stream_on.load(std::memory_order_relaxed) && tick % div == 0) {
-            simproto::StreamSample smp{now_ms, cmd.raw, t_req, model.t_motor_nm(),
-                                       model.t_load_nm(), rpm, flags};
+            simproto::StreamSample smp{now_ms, in.cmd.raw, o.t_req_nm, model.t_motor_nm(),
+                                       model.t_load_nm(), o.rpm, o.flags};
             s_ring.push(smp);
         }
 
-        // 7. Snapshot for the console (tick period was recorded at the top)
+        // Snapshot for the console (tick period was recorded at the top)
         portENTER_CRITICAL(&s_mux);
         s_snap.sim_ms        = now_ms;
-        s_snap.cmd           = cmd;
-        s_snap.cmd_fresh     = fresh;
-        s_snap.t_req_nm      = t_req;
+        s_snap.cmd           = in.cmd;
+        s_snap.cmd_fresh     = in.fresh;
+        s_snap.t_req_nm      = o.t_req_nm;
         s_snap.t_motor_nm    = model.t_motor_nm();
         s_snap.t_load_nm     = model.t_load_nm();
-        s_snap.rpm           = rpm;
-        s_snap.inertia_kgm2  = j;
+        s_snap.rpm           = o.rpm;
+        s_snap.inertia_kgm2  = o.inertia_kgm2;
         s_snap.clipping      = model.clipping();
-        s_snap.inv_fault     = s_inv_fault;
-        s_snap.flags         = flags;
-        s_snap.params        = s_params;
-        s_snap.preset_id     = s_preset_id;
-        memcpy(s_snap.preset_name, s_preset_name, sizeof(s_snap.preset_name));
+        s_snap.inv_fault     = engine.inv_fault();
+        s_snap.flags         = o.flags;
+        s_snap.params        = engine.params();
+        s_snap.preset_id     = engine.preset_id();
+        memcpy(s_snap.preset_name, engine.preset_name(), sizeof(s_snap.preset_name));
         s_snap.loads         = loads.config();
         s_snap.step_level_nm = loads.step_level_nm();
         s_snap.profile_state = loads.profile_state();
@@ -245,13 +114,11 @@ static void sim_task(void *) {
         s_snap.profile_wref_rpm = loads.profile_wref_rpm();
         s_snap.stats         = stats;
         portEXIT_CRITICAL(&s_mux);
-
-        tick++;
     }
 }
 
 void sim_start_task(const SimParams &initial) {
-    s_params = initial;
+    s_initial = initial;
     s_cmd_queue = xQueueCreate(SIM_CMD_QUEUE_LEN, sizeof(SimCmd));
     s_snap = SimSnapshot{};
     s_snap.params = initial;

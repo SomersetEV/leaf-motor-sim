@@ -640,12 +640,14 @@ Seven assumptions needed checking and three risks need watching. None blocks M1 
 | V5 | Governor speed filter is meant to be shift 4. | The source comment says about 30 ms, the code gives about 160 ms. | Ben decides after bench runs with `govFlt` at 4, 3 and 2. |
 | V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | The telematics logger kept only about 15 % of frames in run mode (7 Nov logs). Ben has fixed it (10 Nov 2026, item I9) and will take new logs. Check them for gaps in the `0x4A1` counter. |
 | V7 | The bench Zombie reaches run mode with ignition, start, direction and brake inputs only. | Start conditions depend on the selected vehicle type. | Read the `Ready()` and `Start()` logic of the vehicle class in the tractor's parameter file. |
+| V8 | The tractor's `regenramp` is 100 %/10 ms (no regen ramp), as the harness assumes. | It sets how fast the governor can brake an overspeed. With the default of 1, the M4 overshoot is wrong by 190 rpm. | It is not logged. The M4 bench log shows at least 13.6 (M5c finding 2). Ben gives the value from the tractor's parameter file. |
 
 ### Risks
 
 | Risk | Effect | Response |
 | --- | --- | --- |
 | A single inertia cannot reproduce driveline oscillation. | Bench looks more stable than the tractor. | Caught by validation step 2 or 3. Escalate to the two-mass model. |
+| The bench loop delay depends on the phase between the Zombie's and the simulator's clocks, which drifts by about 1.7 ms a minute (M5c). | The same settings give different results at three and four ticks: 238 and 268 rpm of stroke ripple on 3 Nov. | Every sweep row records `loop_ticks`. Compare runs with the same value, and use `rptdelay 10` in the harness for four. |
 | The real inverter has its own torque ramping and derating that the model lacks. | Bench results near the torque or power limit are optimistic. | Fit `tau` from logs. Treat results where the clipping flag is set as indicative only. |
 | Gains that look best on the bench are tuned to model error. | Poor behaviour back on the tractor. | Always finish with tractor trials of two or three candidates and compare again. |
 
@@ -819,7 +821,7 @@ The plant is an integrator: motor torque into one inertia. Around it sit three l
 | --- | --- |
 | Governor speed filter | 155 ms at `govFlt` 4, 75 ms at 3, 35 ms at 2, 14 ms at 1 |
 | Motor torque lag `tau` | 30 ms |
-| Transport | About 20 ms: the governor uses the previous tick's speed, plus sampling |
+| Transport | Three ticks, 30 ms, plus the 10 ms hold (measured in M5c): the governor uses the speed it read last tick, and `Ms10Task` sends that tick's 0x1D4 before `SetTorque` stores the new request. Four ticks while the clock phase puts the 0x1D4 just after the simulator's tick. |
 
 In physical units, `govKp` 1 (0.01 % per rpm) is 0.489 Nm per rad/s at `kT` 0.25. With P only, the loop gain is
 
@@ -852,6 +854,8 @@ The model gives these starting values. They are predictions from placeholder ine
 
 Build `tools/loopcalc.py`: from `govKp`, `govKi`, `govKd`, `govFlt`, J, `tau` and delay, it prints the crossover, the phase and gain margins and the predicted ring period. Keep the unit conversions in that one file.
 
+Done 11 Nov 2026 as an exact discrete-time linearisation: the plant's 1 ms sub-steps, the measured three-tick delay, and the Zombie's filters. It matches the harness to within 1.4 % on ring period and the M4 bench to within 2 %. With that delay, the table above holds: 45° of margin needs about 10.5×J at shift 4 and 21×J at shift 2 (`docs/bench/M5c_sil.md`, finding 5). It does not describe PI loops at `revlim` (finding 3).
+
 ### Software-in-the-loop harness (M5c)
 
 `tools/sil/` holds a PC program that links the Zombie's `throttle.cpp` and `govlog.cpp`, as `Stm32-vcu/test/Makefile` already does, with this repo's `lib/plant`, `lib/loads` and `lib/leafcodec`. The Zombie path comes from `--zombie` or `ZOMBIE_DIR`, and the Zombie commit hash is written to the output.
@@ -873,6 +877,21 @@ Acceptance:
 - The Zombie golden test inputs give the golden outputs through the harness.
 - Three existing bench runs reproduce: ring period within 10 % and stroke ripple within 15 %. If the bench logs cannot be found, run them again, which needs Ben's pedal clamp.
 - `loopcalc.py` and the harness agree on ring period within 10 %.
+
+**Progress (11 Nov 2026): built, and all three acceptance tests pass.** The details are in `docs/bench/M5c_sil.md`.
+
+- **Golden test:** passes bit for bit.
+- **Bench sweeps:** all five 3 Nov sweeps reproduce, 22 judged sets, with stroke ripple within 0.5 %.
+- **Rings:** the M4 pedal-test rings reproduce exactly (0.640 / 0.640 s and 0.660 / 0.660 s).
+- **Calculator against harness:** agree to within 1.4 % on ring period, and to within 0.6–5.2 % RMS on the whole response.
+
+The harness differs from the steps above in three ways.
+
+- The simulator's tick became `lib/simengine`, shared with the firmware, so the plant cannot drift from it.
+- The order follows the bench, which was measured from the 3 Nov logs: each 0x1D4 carries the previous tick's request. That makes three ticks from a speed sample to its torque, not two.
+- `regenramp` stands at 100, not the default 1. The bench Zombie's regen was never ramp-limited (V8).
+
+`sweep.py`, `run_script.py`, `sil_check.py` and `sil_replay.py` drive the harness through `tools/silport.py`, in simulated time. Every sweep row now also has `loop_ticks`, the bench's measured loop delay.
 
 ### Gain search (M5d)
 
@@ -899,6 +918,8 @@ These four change control logic. None goes into a Zombie branch without Ben's si
 | G2 | Make the D-term slope filter shift a parameter | It is fixed at shift 4 (about 155 ms) whatever `govFlt` is, so `govKd` lags at the stroke frequency. |
 | G3 | Schedule `govKp` on inertia | Section 17. |
 | G4 | Feed-forward from a load-torque observer | Keep it only if it beats G3 at the same stability margin. |
+| G5 | Over `revlim`, stop forcing the output to zero or below while the integral carries load | Today `MIN(0, P + I + D)` cuts the torque to zero one rpm over the limit, so any `govKi` above 0 hunts at `revlim` like a relay: 37–90 rpm at no load on the bench (M5c finding 3). |
+| G6 | Call `SetTorque` before the inverter's `Task10Ms` in `Ms10Task` | The 0x1D4 carries the previous tick's request, an extra 10 ms in the loop. Two ticks instead of three gives 13° of margin at shift 4 and J 0.3, against 7.5° today (M5c finding 4). |
 
 ## 17. Phase 3: governor auto-tune
 

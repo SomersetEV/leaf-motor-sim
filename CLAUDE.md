@@ -22,7 +22,7 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 - Zombie Part B changes are logging only, bit for bit. Ask before touching control logic, existing defaults, or anything out of phase 1 scope.
 - Commit or push only when Ben asks. Ben is happy with a commit per milestone.
 
-## Status (10 Nov 2026)
+## Status (11 Nov 2026)
 
 | Milestone | State |
 | --- | --- |
@@ -32,12 +32,13 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 | M4 Zombie `gov-logging` | Bench tested (3 Nov 2026), second capture. The first capture failed on the ID 162 clash below. |
 | M5 loads, presets, console, telemetry | Bench tested 3 Nov 2026, all steps pass (step 7, the inverter error, confirmed by Ben). Claude drove the console over COM3 with `tools/scripts/m5_part*.yaml`. Tick jitter (about 0.68 ms late wakes) was fixed in `55de8ac`; the worst is now 7–8 µs. Bus errors came from the powered Due, and the sim's `canlog` replaces SavvyCAN. |
 | M5a SDO gain control and sweeps | Built 3 Nov 2026: `zset`/`zget` bench-tested against the Zombie, and `tools/sweep.py` runs end to end. Four sweeps run with the pedal clamped (Kp, Ki, `govFlt`, Kd; results in `docs/bench/M5a_*`, tables in `docs/bench/results/`). On the placeholder baler, the best so far is Kp 11, Ki 1, `govFlt` 2, Kd 0–1; Kd 2 and above is unstable at no-load. Ben can't find the baler logs, so sweeps use the placeholder `baler` preset for now. The telematics SD card had only one short raw log (`session_0052.csv`, 100 kB). |
-| M5b review improvements (plan section 15) | Built 10 Nov 2026, awaiting bench: `docs/bench/M5b_review_improvements.md`. Per-item state is in plan section 15, "Progress". I9 was done by Ben (logger fixed); I10 (`sd ls` reboot) needs the board. |
+| M5b review improvements (plan section 15) | Built 10 Nov 2026, awaiting bench: `docs/bench/M5b_review_improvements.md`. Per-item state is in plan section 15, "Progress". I9 was done by Ben (logger fixed); I10 (`sd ls` reboot) needs the board. Committed (`2dc92c4`). |
+| M5c loop calculator and software-in-the-loop (plan section 16) | Built 11 Nov 2026, all three acceptance tests pass on the 3 Nov bench logs: `docs/bench/M5c_sil.md`. The bench part waits for the M5b sweeps (ring periods on their tails) and Ben's `regenramp` (V8). |
 | M6 SD profiles and PC tools | SD replay bench tested (3 Nov 2026): a profile built from a bench log replays to 0.09 Nm, and the closed loop reproduces its source run to 4.8 rpm. Done. |
 | M7 tractor captures R1–R7 | Ben's job |
 | M8, M9 validation and tuning | Need M7 logs. Analysis uses `tools/`. |
 
-**Next:** the M5b bench procedure, `docs/bench/M5b_review_improvements.md`. In short: flash, check `params` and the repeatability of one set (`repeats: 3`, I5), then re-run `tools/scripts/sweep_road.yaml` (road theory test, no baler: full pedal, J 2.5, slow gradient ramps from +60 to −15 Nm). Since 10 Nov it uses one band-limited noise setting fitted to the 7 Nov tractor logs (`noise` 11, `noise_fc` 6, `noise_bw` 4, from `tools/fit_noise.py`) in place of the per-`govFlt` white-noise levels. It adds sets at `govKp` 20–30 on shift 2 (plan section 16) and a 4 s tail with the load off, for ring metrics. Earlier road results are not valid: the first run lost log chunks to a pump bug, and the second run's Ki 0 sets kept an 8 % integral. `sweep.py` now clears the integral at each set by pulsing `govImax` to 0; check that `peak_integral_pct` is 0 on the Ki 0 sets. Then I10: apply the git stash (`sd ls`/`sd get`, `tools/sd_pull.py`), capture the backtrace from the `sd ls` reboot and fix it, and take `topper.json` (test only) off the sim's SD card. Then push for the first CI run (I3). Then M5c. When Ben's new tractor logs arrive (logger fixed 10 Nov), check them for `0x4A1` gaps and follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
+**Next:** the M5b bench procedure, `docs/bench/M5b_review_improvements.md`. In short: flash, check `params` and the repeatability of one set (`repeats: 3`, I5), then re-run `tools/scripts/sweep_road.yaml` (road theory test, no baler: full pedal, J 2.5, slow gradient ramps from +60 to −15 Nm). Since 10 Nov it uses one band-limited noise setting fitted to the 7 Nov tractor logs (`noise` 11, `noise_fc` 6, `noise_bw` 4, from `tools/fit_noise.py`) in place of the per-`govFlt` white-noise levels. It adds sets at `govKp` 20–30 on shift 2 (plan section 16) and a 4 s tail with the load off, for ring metrics. Earlier road results are not valid: the first run lost log chunks to a pump bug, and the second run's Ki 0 sets kept an 8 % integral. `sweep.py` now clears the integral at each set by pulsing `govImax` to 0; check that `peak_integral_pct` is 0 on the Ki 0 sets. Then I10: apply the git stash (`sd ls`/`sd get`, `tools/sd_pull.py`), capture the backtrace from the `sd ls` reboot and fix it, and take `topper.json` (test only) off the sim's SD card. Then push for the first CI run (I3); CI now also checks out `SomersetEV/Stm32-vcu` for the harness checks. Then run `sil_check.py` on the new M5b result folders (`docs/bench/M5c_sil.md`, bench steps). Then M5d, the gain search over the harness. When Ben's new tractor logs arrive (logger fixed 10 Nov), check them for `0x4A1` gaps and follow plan section 10: `extract_params.py`, then `make_profile.py`, then `compare_runs.py`.
 
 **Added 10 Nov 2026 (plan sections 15–17):** a repo review gave milestones M5b (eleven improvements, built 10 Nov), M5c (loop calculator and software-in-the-loop harness) and M5d (gain search). None needs tractor data. Section 17 is Phase 3, governor auto-tune (M14–M17): do not start without Ben. The Zombie facts below were re-checked on 10 Nov (item I1).
 
@@ -46,12 +47,15 @@ A bench rig for Ben's Leyland 255 electric tractor. A LilyGo T-CAN485 (ESP32) im
 ## Build and test
 
 ```text
-pio test -e native             # 75 Unity tests for lib/
+pio test -e native             # 79 Unity tests for lib/
 pio run -e tcan485             # firmware (pioarduino "stable": Arduino-ESP32 3.3.0, IDF 5.5)
-python tools/selftest.py       # 37 checks; needs g++ on PATH and tools/requirements.txt
+python tools/selftest.py       # 48 checks; needs g++ on PATH and tools/requirements.txt.
+                               # The 5 harness checks need the Zombie tree (ZOMBIE_DIR or ../Stm32-vcu), else skipped
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs all three on every push.
+GitHub Actions (`.github/workflows/ci.yml`) runs all three on every push, with the Zombie tree checked out for the harness checks.
+
+Software-in-the-loop (M5c): `tools/silport.py --golden`, then `sweep.py ... --port sil` or `run_script.py ... --port sil`. `tools/silport.py` builds the harness into `tools/sil/build/` (gitignored) when a source changes. `loopcalc.py` gives margins and the ring from a linear model.
 
 Zombie, on `Tractor-RPM-limiting-testing` (or `gov-logging`): `cd test && make && ./test_vcu` for host tests (18 pass, including `TestGovernorGolden`; re-checked on the tractor branch 10 Nov). On Windows, `mingw32-make` from WinLibs works where `make` is missing. Run `make` at the root for the firmware, using the GNU Arm toolchain. On Windows, build libopencm3 once with `make -C libopencm3 TARGETS=stm32/f1 PYTHON="py -3"`.
 
@@ -75,6 +79,9 @@ Zombie, on `Tractor-RPM-limiting-testing` (or `gov-logging`): `cd test && make &
   - **ID 162 clash, fixed in the source on 8 Nov (`28d53d0` moved `MGChgLimRaw` to 164).** `c1ad315` (19 Oct) had `MGChgLimRaw` (default 2046) on ID 162, the same as `govFlt`. Flash load skips range checks, so a Zombie whose saved setup came from `c1ad315`-era firmware still loads `govFlt` = 2046 when it first boots `gov-logging` or `a05e984`. The filter then goes NaN and the governor commands `regenmax` regardless of pedal until reboot. After any such switch, set `govFlt` = 4 (and `MGChgLimRaw` = 2046), save and power-cycle.
 - **Tractor governor setup (Ben, 3 Nov 2026):** `revlim` 2200, `govKp` 11, `govKi` 0, `govKd` 0, `govImax` 100, `regenmax` −30, `throtramp` 10. It is P-only today.
 - **Tests compare against the Zombie's own code.** `test/test_leafcodec` contains verbatim copies of the Zombie encode and decode functions. On the Zombie side, the governor golden test was recorded from the unmodified code, and the first commit on `gov-logging` contains only that test.
+- **The harness runs the firmware's own tick.** `lib/simengine` is the sim tick, shared by `src/sim_task.cpp` and `tools/sil`; change the tick there, never in one copy. The Zombie glue in `tools/sil/zombie_side.cpp` is line-for-line copies of `Ms10Task`, `ProcessThrottle`, `SendGovLog`, `SetTorque`, `DecodeCAN` and the 0x1D4 part of `NissLeafMng::Task10Ms`. Re-check them when the Zombie branch moves.
+- **Bench loop delay (measured 11 Nov 2026 from the 3 Nov logs):** three sim ticks from a 0x1DA speed sample to the tick applying its torque, because each 0x1D4 carries the previous tick's request (`Task10Ms` runs before `SetTorque`). It is four ticks while the drifting clock phase (about 1.7 ms a minute) puts the 0x1D4 just after the sim's tick. Sweep rows record it as `loop_ticks`; compare runs at equal values, and in the harness use `rptdelay 10` for four.
+- **Governor relay at `revlim` (M5c finding 3):** with `govKi` above 0, `MIN(0, P + I + D)` over the limit cuts torque to zero, so the loop hunts at `revlim` (no-load p2p 37–90 rpm on the bench). `loopcalc.py` describes P and PD only there. Candidate change G5 is for the harness only, with Ben's sign-off.
 - **PC tools must mirror `lib/plant` exactly.** `tools/simmodel.py` reproduces the firmware's 1 ms lag sub-steps; the continuous-time lag biased b and c. `loglib` interpolates speeds onto the 10 ms grid, because holding the last value creates derivative spikes. `extract_params` picks the request-to-speed delay from −2 to +2 ticks automatically.
 - **Profiles** are stored in 8 kB chunks, capped at 60,000 rows, because the ESP32 often lacks a contiguous 120 kB block. Inertia is stored as change points.
 - **Bench capture is the sim's `canlog`, not SavvyCAN** (3 Nov 2026). Ben's Due with GVRET sends about 120 error frames a second even in listen-only mode, and it dropped Zombie frames from its captures; keep it unpowered. To capture, run `tools/run_script.py ... --canlog-out bus.log` with `canlog 1` in the script. On the laptop, the sim is on COM3 (CH9102) and the Due on COM5. Claude can flash and drive the sim from here (`pio run -e tcan485 -t upload --upload-port COM3`; a first connect attempt sometimes fails, so retry).
@@ -93,6 +100,7 @@ Zombie, on `Tractor-RPM-limiting-testing` (or `gov-logging`): `cd test && make &
 | V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Speed noise (`set noise` up to 15 rpm, Gaussian) does not change that: at shift 2 it adds about 2 Nm RMS of tick-to-tick torque jitter at no-load, and true-shaft ripple stays 242–268 rpm against 322 at shift 4. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
 | V6 raw 10 ms CAN logging on the tractor | Ben fixed the telematics logger on 10 Nov (it kept about 15 % of frames); new logs to come |
 | V7 run-mode inputs for the vehicle class | Open: needs the tractor's `Vehicle` parameter, then read its `Ready()`/`Start()` in Stm32-vcu |
+| V8 tractor `regenramp` | Open: not logged. The bench Zombie's is at least 13.6 %/10 ms (M4 log), not the default 1; the harness uses 100. Ben to give the value |
 
 ## Ben's safety note for tractor work
 

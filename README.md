@@ -22,6 +22,7 @@ Run these from PowerShell or the PlatformIO terminal in VS Code. The pioarduino 
 | `lib/plant` | Single-inertia motor model: torque envelope, torque lag, friction, standstill hold |
 | `lib/loads` | Step, pulse, noise, gradient and profile loads; profile storage and CSV parser |
 | `lib/sensor` | Reported speed in `0x1DA`: delay (`rptdelay`) and white or band-limited noise |
+| `lib/simengine` | The 10 ms tick itself (commands, loads, model, frames), shared by the firmware and the PC harness |
 | `lib/simcore` | `0x1D4` latch, tick statistics, parameter table, presets, flat JSON, ring buffer |
 | `lib/simproto` | Console parsing, command parser, `0x4B0`–`0x4B2` packing, CSV stream lines, Zombie SDO |
 | `src/` | ESP32 code: TWAI driver, 10 ms tick, console, `canlog`, SD files, NVS, status LED |
@@ -62,7 +63,8 @@ zget <name> | zset <name> <value>   (Zombie governor params over SDO)
 | M5 Loads, presets, console, telemetry, events | Bench tested 3 Nov 2026: [docs/bench/M5_loads_console.md](docs/bench/M5_loads_console.md) |
 | M5a Gains over SDO, scripted sweeps | Bench tested 3 Nov 2026: [docs/bench/M5a_sdo_sweeps.md](docs/bench/M5a_sdo_sweeps.md), results in [docs/bench/results/](docs/bench/results/) |
 | M5b Review improvements (plan section 15) | Built 10 Nov 2026, awaiting bench test: [docs/bench/M5b_review_improvements.md](docs/bench/M5b_review_improvements.md) |
-| M5c, M5d Loop calculator, software-in-the-loop, gain search | Planned (plan section 16) |
+| M5c Loop calculator and software-in-the-loop (plan section 16) | Built 11 Nov 2026; reproduces the 3 Nov bench runs: [docs/bench/M5c_sil.md](docs/bench/M5c_sil.md) |
+| M5d Gain search | Planned (plan section 16) |
 | M6 SD profiles and PC tools | Bench tested 3 Nov 2026: [docs/bench/M6_sd_profiles_tools.md](docs/bench/M6_sd_profiles_tools.md) |
 | M7 Tractor capture, runs R1 to R7 | Ben |
 | M8, M9 Validation and tuning | Need M7 logs |

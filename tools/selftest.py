@@ -16,6 +16,10 @@ libraries, generates logs with known parameters, and checks:
   8. sweep.py, against a fake console: replies matched to their commands with
      canlog lines and late replies mixed in, the integral cleared, gains
      restored after an error, repeats summarised (plan item I4)
+  9. loopcalc's conversions, and its rings against the M4 bench
+ 10. the software-in-the-loop harness (M5c): the Zombie's golden test
+     through it, a 3 Nov bench run reproduced, and loopcalc against it.
+     Needs the Stm32-vcu tree (ZOMBIE_DIR or ../Stm32-vcu); skipped without
 
     python selftest.py [--keep DIR]
 """
@@ -394,6 +398,67 @@ def test_run_script():
         check("run_script stops on err without allow_err", True)
 
 
+def test_loopcalc():
+    """loopcalc's conversions, and its predictions against the M4 bench rings
+    and the 3 Nov govKp sweep (plan section 16)."""
+    import loopcalc as lc
+    check("loopcalc: govKp 1 is 0.489 Nm per rad/s", abs(lc.kp_nm_per_rad_s(1.0) - 0.489) < 0.001,
+          f"{lc.kp_nm_per_rad_s(1.0):.4f}")
+    check("loopcalc: shift 4 filter lag about 155 ms", abs(lc.filter_lag_s(4) - 0.155) < 0.002)
+    r4, r2 = lc.analyse(kp=11, flt=4, J=0.3), lc.analyse(kp=11, flt=2, J=0.3)
+    check("loopcalc: M4 bench ring at shift 4 (0.64 s, each cycle keeps 0.65)",
+          abs(r4["ring_period_s"] / 0.640 - 1) < 0.05 and abs(r4["ring_keep"] - 0.65) < 0.1,
+          f"{r4['ring_period_s']:.3f} s, keep {r4['ring_keep']:.2f}")
+    check("loopcalc: M4 bench ring at shift 2 (0.37 s, keeps 0.35)",
+          abs(r2["ring_period_s"] / 0.370 - 1) < 0.05 and abs(r2["ring_keep"] - 0.35) < 0.1,
+          f"{r2['ring_period_s']:.3f} s, keep {r2['ring_keep']:.2f}")
+    s14, s18 = lc.analyse(kp=14, flt=4, J=0.3)["stable"], lc.analyse(kp=18, flt=4, J=0.3)["stable"]
+    check("loopcalc: govKp 14 stable and 18 not, as in the 3 Nov sweep", s14 and not s18)
+    # A P-only loop settles at the load over (Kp in Nm/rpm + viscous drag)
+    y = lc.load_step_response(20.0, 1500, kp=11, flt=2, J=0.3)
+    k = 11 * 0.01 * lc.PCT_TO_RAW * 0.25 + 0.02 / lc.RPM_PER_RAD_S
+    check("loopcalc: P-only droop under a load step", abs(y[-1] + 20.0 / k) < 0.2,
+          f"{y[-1]:.2f} rpm, expected {-20.0 / k:.2f}")
+
+
+def test_sil(d: Path):
+    """The software-in-the-loop harness (tools/sil, M5c): the Zombie's golden
+    test through it, a bench run reproduced, and loopcalc against it. Needs
+    the Stm32-vcu tree (ZOMBIE_DIR or ../Stm32-vcu); skipped without it."""
+    import loopcalc as lc
+    import sil_check
+    import silport
+    import sweep
+    try:
+        zdir = silport.zombie_dir()
+    except silport.SilError as e:
+        print(f"SKIP  sil harness checks: {e}")
+        return
+    check("sil: the Zombie's governor golden test passes through the harness",
+          silport.golden(zdir, log=lambda m: None))
+    # 3 Nov govFlt sweep, set 3 (Kp 11, Ki 1, shift 2, baler, pedal 89.7 %):
+    # bench stroke_p2p_rpm 237.68, treq_stroke_p2p_nm 160.8
+    s = sweep.load_sweep("load: {preset: baler}\nsettle_s: 8\nrun_s: 30\ntail_s: 4\n"
+                         "base: {govKp: 11, govKi: 1, govKd: 0}\nsets:\n  - {govFlt: 2}\n")
+    with silport.SilPort(pedal=89.7, log=lambda m: None) as port:
+        con = sweep.Console(port, log=lambda m: None, clock=port.clock, sleep=port.sleep)
+        row = sweep.run_sweep(s, con, d, log=lambda m: None)[0]
+        check("sil: 3 Nov bench run reproduced (stroke ripple within 1 %)",
+              abs(row["stroke_p2p_rpm"] / 237.68 - 1) < 0.01 and abs(row["treq_stroke_p2p_nm"] / 160.8 - 1) < 0.01,
+              f"stroke {row['stroke_p2p_rpm']:.1f} rpm, torque {row['treq_stroke_p2p_nm']:.1f} Nm per stroke")
+        check("sil: loop delay is 3 ticks, as on the bench", abs(row["loop_ticks"] - 3.0) < 0.01,
+              f"{row['loop_ticks']:.2f}")
+        check("sil: the simulated clock ran (no wall-clock waits)", port.clock() > 40.0)
+        case = (11, 0, 4, 0.3, 0)
+        dv, (period, keep, n) = sil_check.harness_ring(port, case, d / "sil_ring_bus.log")
+    lin = lc.load_step_response(-sil_check.STEP_NM, sil_check.RESPONSE_TICKS, kp=11, flt=4, J=0.3)
+    shape = sil_check.response_shape(dv, lin)
+    want = lc.analyse(kp=11, flt=4, J=0.3)["ring_period_s"]
+    check("sil: loopcalc and the harness agree (ring period within 10 %, response within 10 %)",
+          abs(period / want - 1) < 0.10 and shape < 0.10,
+          f"ring {period:.3f} s against {want:.3f} s, response RMS difference {shape:.1%}")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--keep", help="keep generated files in this directory")
@@ -411,6 +476,8 @@ def main(argv=None) -> int:
         test_compare(baler)
         test_run_script()
         test_sweep(d)
+        test_loopcalc()
+        test_sil(d)
     finally:
         if not a.keep:
             shutil.rmtree(d, ignore_errors=True)
