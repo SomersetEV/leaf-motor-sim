@@ -80,8 +80,8 @@ static int s_gov_slow_div = 0;
 // Zombie's defaults. regenramp is not logged anywhere: in the M4 bench log
 // it never limited a step, the largest being 13.6 %/10 ms, so the bench
 // Zombie (which carries the tractor's saved parameters) has at least that,
-// not the default 1. 100, its maximum, stands in until Ben gives the real
-// value. Not listed, so at their defaults: throtramprpm 20000, throtmax 100,
+// not the default 1. Ben will set the tractor to at least 5 (11 Nov 2026); in
+// the harness every value from 3 up behaves the same, so 100, its maximum. Not listed, so at their defaults: throtramprpm 20000, throtmax 100,
 // throtmin -100.
 static const struct {
   Param::PARAM_NUM p;

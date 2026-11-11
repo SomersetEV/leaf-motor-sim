@@ -98,7 +98,15 @@ The calculator also gets the M4 bench and the 3 Nov `govKp` sweep right. At shif
 
    `loop_ticks` is now in every sweep row. In the harness the delay is always 3. Use `set rptdelay 10` for 4; `sil_check` does this per set from the bench table.
 
-2. **The bench Zombie's `regenramp` is at least 13.6 %/10 ms**, not the default 1. It is not logged. In the M4 log it never limited a step, and the largest step was 13.6 %. The harness uses 100, the parameter's maximum. With the default of 1, the M4 overshoot came out wrong by 190 rpm. **Ben: what is `regenramp` on the tractor?** If it is not 100, set it in `tools/sil/zombie_side.cpp` (`TRACTOR`), or try it with `zparam regenramp <value>`.
+2. **The bench Zombie's `regenramp` is at least 13.6 %/10 ms**, not the default 1. It is not logged. In the M4 log it never limited a step, and the largest step was 13.6 %. The harness uses 100, the parameter's maximum. With the default of 1, the M4 overshoot came out wrong by 190 rpm.
+
+   A harness study at 1, 2, 3, 5, 10, 20 and 100 found three things:
+
+   - **While governing, it hardly matters.** For a load dropping off or a sudden overrun, the governor asks for regen slower than 1 % a tick, so even the default never limits it.
+   - **It matters for a fast run-up to `revlim` at low inertia.** At shift 4, 1 % keeps the shaft more than 50 rpm over the limit for 2.07 s, and 3 and above for 1.51 s.
+   - **Nothing above 5 changes anything.**
+
+   Ben will set the tractor to at least 5 (11 Nov 2026), which is still half as harsh a torque reversal as `throtramp` 10 on the drive side. The harness keeps 100, which behaves the same.
 
 3. **With `govKi` above 0, the governor hunts at `revlim` like a relay.** Over the limit, `SpeedLimitCommand` clamps its output to `MIN(0, P + I + D)`. When the integral carries load (14 % for the no-load friction), a speed one rpm over `revlim` cuts the torque straight to zero. Back under, the torque returns at once. The loop settles into a small limit cycle that no linear model describes: about 0.45 s, 40 rpm peak to peak, at J 0.9.
 
@@ -140,5 +148,5 @@ The tool self-test runs the golden test, one bench reproduction and one calculat
 M5c needs nothing new on the bench. Once M5b steps 3 and 4 have produced their results folders:
 
 1. **Ring periods.** Run `sil_check.py docs/bench/results/<date>_sweep_repeat_baler docs/bench/results/<date>_sweep_road --out <folder>`. Those sweeps end each set with the load off, so ring period is judged as well as stroke ripple (within 10 %). Noise sets are judged too, because the bench now restarts its noise on `preset`. It should print `PASS`. Look at `loop_ticks` for each set: a set at 4 is run in the harness with 10 ms of `rptdelay`.
-2. **`regenramp`.** Tell Claude the tractor's value (finding 2).
+2. **`regenramp`.** Set the tractor to at least 5 (finding 2). Check the bench Zombie reads 5 or more too, in the web interface.
 3. **Optional: a fresh pedal test**, if Claude asks for one: no load, P only, pedal pressed from rest to past `revlim` a few times at shifts 4 and 2, GovLog on, `canlog` running. `sil_replay.py` then compares the rings.

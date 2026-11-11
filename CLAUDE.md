@@ -100,7 +100,7 @@ Zombie, on `Tractor-RPM-limiting-testing` (or `gov-logging`): `cd test && make &
 | V5 governor filter shift | Ben decides after bench runs at 4, 3 and 2. M4, `noload`, P-only (Kp 11): shift 4 rings at about 630 ms, and each cycle keeps about 0.65 of the last one's size; shift 2 rings at about 370 ms and keeps about 0.35. M5a sweeps (placeholder baler, Kp 11, Ki 1), no-load ring / stroke ripple: shift 4 gives 90 / 322 rpm, 3 gives 60 / 293, and 2 gives 37 / 238, but torque swing per stroke rises from 124 to 161 Nm. Speed noise (`set noise` up to 15 rpm, Gaussian) does not change that: at shift 2 it adds about 2 Nm RMS of tick-to-tick torque jitter at no-load, and true-shaft ripple stays 242–268 rpm against 322 at shift 4. Shift 2 was on the tractor briefly in July (`c54f5bd7`, reverted in `d9edbf39`), but other problems were going on, so Ben says to treat that trial as no information. |
 | V6 raw 10 ms CAN logging on the tractor | Ben fixed the telematics logger on 10 Nov (it kept about 15 % of frames); new logs to come |
 | V7 run-mode inputs for the vehicle class | Open: needs the tractor's `Vehicle` parameter, then read its `Ready()`/`Start()` in Stm32-vcu |
-| V8 tractor `regenramp` | Open: not logged. The bench Zombie's is at least 13.6 %/10 ms (M4 log), not the default 1; the harness uses 100. Ben to give the value |
+| V8 tractor `regenramp` | Decided 11 Nov 2026: Ben will set it to at least 5 %/10 ms (it is usually the default 1). The bench Zombie's is already at least 13 (M4 log). The harness keeps 100: in the harness study, nothing above 5 changed any result, and 3 already gave all the benefit |
 
 ## Ben's safety note for tractor work
 

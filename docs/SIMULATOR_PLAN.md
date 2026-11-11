@@ -640,7 +640,7 @@ Seven assumptions needed checking and three risks need watching. None blocks M1 
 | V5 | Governor speed filter is meant to be shift 4. | The source comment says about 30 ms, the code gives about 160 ms. | Ben decides after bench runs with `govFlt` at 4, 3 and 2. |
 | V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | The telematics logger kept only about 15 % of frames in run mode (7 Nov logs). Ben has fixed it (10 Nov 2026, item I9) and will take new logs. Check them for gaps in the `0x4A1` counter. |
 | V7 | The bench Zombie reaches run mode with ignition, start, direction and brake inputs only. | Start conditions depend on the selected vehicle type. | Read the `Ready()` and `Start()` logic of the vehicle class in the tractor's parameter file. |
-| V8 | The tractor's `regenramp` is 100 %/10 ms (no regen ramp), as the harness assumes. | It sets how fast the governor can brake an overspeed. With the default of 1, the M4 overshoot is wrong by 190 rpm. | It is not logged. The M4 bench log shows at least 13.6 (M5c finding 2). Ben gives the value from the tractor's parameter file. |
+| V8 | The tractor's `regenramp` is 100 %/10 ms (no regen ramp), as the harness assumes. | It sets how fast the governor can brake an overspeed. With the default of 1, the M4 overshoot is wrong by 190 rpm. | **Decided 11 Nov 2026:** Ben will set at least 5. The M4 bench log shows the bench Zombie at 13 or more (M5c finding 2). In the harness, values of 3 and above all behave the same, so the harness keeps 100. |
 
 ### Risks
 
