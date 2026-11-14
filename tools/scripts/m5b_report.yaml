@@ -10,7 +10,7 @@
 # Mark 4 onwards: white noise of the same level, for comparison.
 baud: 921600
 steps:
-  - {at: 0.0,  cmd: "preset noload"}
+  - {at: 0.0,  cmd: "preset default"}
   - {at: 0.2,  cmd: "set J 2.5"}         # road inertia: 20 ms of delay costs only a few degrees here
   - {at: 0.5,  cmd: "canlog 1"}
   - {at: 1.0,  cmd: "set rptdelay 20"}
@@ -29,4 +29,4 @@ steps:
   - {at: 72.5, cmd: "set noise 0"}
   - {at: 73.0, cmd: "canlog 0"}
   - {at: 73.5, cmd: "params"}
-  - {at: 74.0, cmd: "preset noload"}     # J back to its default
+  - {at: 74.0, cmd: "preset default"}    # J back to its default

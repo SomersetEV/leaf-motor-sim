@@ -5,7 +5,7 @@
 baud: 921600
 reply_timeout_s: 5
 steps:
-  - {at: 0.0,  cmd: "preset noload"}
+  - {at: 0.0,  cmd: "preset default"}
   - {at: 0.2,  cmd: "set J 0.9"}
   - {at: 0.4,  cmd: "set Tc 10"}
   - {at: 0.6,  cmd: "profile load baler_bench"}
@@ -15,7 +15,7 @@ steps:
   - {at: 2.0,  cmd: "canlog 1"}
   - {at: 10.0, cmd: "profile start"}
   - {at: 41.0, cmd: "canlog 0"}
-  - {at: 41.5, cmd: "preset noload"}
+  - {at: 41.5, cmd: "preset default"}
   - {at: 42.0, cmd: "zset govKi 0"}
   - {at: 42.2, cmd: "zset govFlt 4"}
   - {at: 42.4, cmd: "zset GovLog 0"}

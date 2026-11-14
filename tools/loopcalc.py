@@ -225,7 +225,7 @@ def main(argv=None) -> int:
                     ("revlim", "rpm"), ("b", "viscous drag, Nm s/rad"), ("c", "quadratic drag, Nm s2/rad2"),
                     ("kt", "Nm per request bit")]:
         ap.add_argument(f"--{k}", type=_floats, default=[DEFAULTS[k]],
-                        help=f"{unit} (default {DEFAULTS[k]:g}); a comma list makes a table")
+                        help=f"{unit.replace('%', '%%')} (default {DEFAULTS[k]:g}); a comma list makes a table")
     a = ap.parse_args(argv)
     names = list(DEFAULTS)
     grid = itertools.product(*[getattr(a, n) for n in names])

@@ -7,4 +7,4 @@ steps:
   - {at: 2.0,   cmd: "stream 1"}
   - {at: 602.0, cmd: "stream 0"}
   - {at: 604.0, cmd: "stat"}
-  - {at: 605.0, cmd: "preset noload"}
+  - {at: 605.0, cmd: "preset default"}

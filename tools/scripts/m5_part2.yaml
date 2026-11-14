@@ -13,7 +13,7 @@ steps:
   - {at: 5.0,   cmd: "stream 1"}
   - {at: 605.0, cmd: "stream 0"}
   - {at: 607.0, cmd: "stat"}
-  - {at: 608.0, cmd: "preset noload"}
+  - {at: 608.0, cmd: "preset default"}
   # 7. Fault: check the Zombie's inverter error while it is set
   - {at: 620.0, cmd: "mark 6"}
   - {at: 621.0, cmd: "fault inv 1"}

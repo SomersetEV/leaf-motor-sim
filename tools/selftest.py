@@ -282,7 +282,7 @@ class FakeSim:
 
 def test_sweep(d):
     import sweep
-    spec = sweep.load_sweep("load: {preset: noload, grad: [[0, 10], [1, 30]]}\n"
+    spec = sweep.load_sweep("load: {preset: default, grad: [[0, 10], [1, 30]]}\n"
                             "settle_s: 0.5\nrun_s: 1.0\ntail_s: 0.3\n"
                             "base: {govKp: 11}\nsets: [{govKi: 0}, {govKi: 1, govFlt: 2}]\n")
     now = [0.0]

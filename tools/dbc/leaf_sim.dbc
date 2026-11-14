@@ -143,7 +143,7 @@ CM_ SG_ 1200 TorqueMotor "Motor torque after the envelope and lag.";
 CM_ SG_ 1200 TorqueLoad "Signed load torque on the shaft: friction plus loads.";
 CM_ BO_ 1201 "Simulator status, every 100 ms.";
 CM_ SG_ 1201 Inertia "Inertia in use, including step dJ or the profile's inertia column.";
-CM_ SG_ 1201 PresetId "0 none, 1 noload, 2 topper, 3 baler, 4 pto_step, 200 SD-only preset.";
+CM_ SG_ 1201 PresetId "0 none, 1 noload, 2 topper, 3 baler, 4 pto_step, 5 default, 200 SD-only preset.";
 CM_ SG_ 1201 Rejected1D4 "0x1D4 frames rejected for CRC or length, wrapping.";
 CM_ SG_ 1201 Overruns "10 ms tick overruns, wrapping.";
 CM_ SG_ 1201 WorstJitter "Worst tick period error in the last second.";

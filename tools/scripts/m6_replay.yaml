@@ -9,7 +9,7 @@ steps:
   - {at: 0.5,  cmd: "presets"}                      # lists baler.json, topper.json
   - {at: 1.0,  cmd: "profile list"}
   - {at: 1.5,  cmd: "profile load baler_bench"}     # ok rows=2999 seconds=29.99
-  - {at: 2.5,  cmd: "preset noload"}
+  - {at: 2.5,  cmd: "preset default"}
   - {at: 2.7,  cmd: "params"}                       # base friction for the match check
   - {at: 3.0,  cmd: "canlog 1"}
   - {at: 5.0,  cmd: "mark 1"}
@@ -29,4 +29,4 @@ steps:
   - {at: 76.0, cmd: "preset nosuch", allow_err: true}             # err unknown preset, try presets
   - {at: 76.5, cmd: "preset topper"}
   - {at: 77.0, cmd: "stat"}                         # J=0.750 noise=on (card file over built-in)
-  - {at: 77.5, cmd: "preset noload"}
+  - {at: 77.5, cmd: "preset default"}

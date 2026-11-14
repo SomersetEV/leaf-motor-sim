@@ -125,7 +125,7 @@ STEP_NM = 20.0
 def harness_ring(port: SilPort, case, out: Path, log=print):
     kp, kd, flt, j, delay = case
     con = sweep.Console(port, log=lambda m: None, clock=port.clock, sleep=port.sleep)
-    con.cmd("preset noload")
+    con.cmd("preset default")
     con.cmd(f"set J {j:g}")
     con.cmd(f"set rptdelay {delay:g}")
     for n, v in (("govKi", 0), ("govKp", kp), ("govKd", kd), ("govFlt", flt), ("GovLog", 1)):

@@ -201,6 +201,13 @@ static void test_builtin_presets() {
     }
     TEST_ASSERT_TRUE(builtin_preset("baler", base, p));
     TEST_ASSERT_TRUE(p.loads.pulse_on);
+    // noload is the measured neutral shaft; default keeps the compiled base
+    TEST_ASSERT_TRUE(builtin_preset("noload", base, p));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, 0.055f, p.params.plant.j_kgm2);
+    TEST_ASSERT_FALSE(p.loads.pulse_on);
+    TEST_ASSERT_TRUE(builtin_preset("default", base, p));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, base.plant.j_kgm2, p.params.plant.j_kgm2);
+    TEST_ASSERT_FLOAT_WITHIN(1e-6f, base.plant.b_nms, p.params.plant.b_nms);
     TEST_ASSERT_FALSE(builtin_preset("nonsense", base, p));
 }
 

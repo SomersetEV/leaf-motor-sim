@@ -26,7 +26,7 @@
 # integral at the start of each set.
 #   python sweep.py scripts/sweep_road.yaml --port COM3 --out <folder>
 load:
-  preset: noload
+  preset: default
   cmds: ["load noise 3 2"]
   grad: [[0, 20], [10, 20], [25, 60], [40, 60], [55, -15], [70, -15], [80, 20], [90, 20]]
 settle_s: 8

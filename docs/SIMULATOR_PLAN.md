@@ -492,15 +492,20 @@ Tractor logs must be raw CAN frames with timestamps of 1 ms or better, taken on 
 
 Save each run as its own file in SavvyCAN CSV or candump format, with a text note of implement, gear, PTO state and conditions.
 
+Runs D1–D3 were added on 14 Nov 2026, while the tractor can only be run on the road. They measure the loop at three gear inertias, which brackets the PTO case. The reasoning and harness predictions are in `docs/tractor/road_runs_plan.md`, and the field sheet is `docs/tractor/M7_road_D1_D3_field_sheet.pdf`. 1800 motor rpm is 540 rpm at the PTO.
+
 | Run | What to do | What it gives |
 | --- | --- | --- |
-| R1 No-load acceleration | PTO out, neutral, `revlim` set high. Step the throttle to a fixed low value, about 20 %, and let speed rise to about 2000 rpm. Three repeats. | Inertia. |
+| R1 No-load acceleration | PTO out, neutral, `revlim` set high. Hold the throttle at about 2.5, 3 and 3.5 % in turn (one each), and let speed settle by itself for about 5 s. The neutral shaft is light (J 0.055 kg·m², 13 Nov 2026), so 20 % would run away. | Inertia, and friction at three speeds. |
 | R2 Coast-down | From about 2000 rpm, release the throttle and let it run down. Set regen to zero for this run if practical. | Friction terms `Tc`, `b`, `c`. |
 | R3 Implement empty | Repeat R1 and R2 with the PTO engaged and the implement running empty. | Added inertia and friction of the implement. |
-| R4 Fast hit on the limit | Working `revlim`, no load, throttle snapped fully open. Three repeats. | Reference for overshoot and the dip-and-creep behaviour. |
+| R4 Fast hit on the limit | Working `revlim`, no load, throttle stepped quickly to about 6 % and held 5 s. Release at once above `revlim` + 500. Never full throttle in neutral: 18 % overshot to 3460 rpm on 13 Nov 2026. Three repeats. | Reference for overshoot, hunting and the dip-and-creep behaviour. |
 | R5 Steady work | Five minutes of topping or mowing at governed speed. | Steady load profile. |
 | R6 Baling | Five minutes including material starting and stopping. | Pulse load profile and governor wind-up reference. |
 | R7 PTO engage and disengage | At governed speed, engage and disengage the PTO several times. | Step response reference. |
+| D1 Road acceleration and coast | In gear on a flat road (gears A, road, and B, about 10 km/h at 1800 rpm): a fixed pedal from about 500 to 1800 rpm, then coast in gear, `regenmax` 0 if the road allows. Twice each way. | Inertia per gear, rolling and driveline drag. |
+| D2 Road hit on the limit | In gear on the flat: step to the limit and hold 10 s. Gear A at full pedal, B at about 25 %, C (6–8 km/h) at about 12 %. Release above 2700 rpm or on a hard surge. Three each. | Overshoot and hunting at three inertias, either side of the stability boundary at today's gains. |
+| D3 Road gradient at the limit | Gear A, full pedal, 20 s up and 20 s down a steady hill. Twice each way. | Droop and regen at the limit; gradient load profile for the road sweep. |
 
 ### Python tools
 
@@ -556,7 +561,7 @@ No gain is tuned on the bench until the bench reproduces what the tractor did wi
 ### Validation steps
 
 1. **Open loop.** Set `revlim` high and repeat R1 on the bench with the fitted parameters. The bench speed trace should track the tractor's R1 trace within 5 % at every point.
-2. **Fast hit on the limit.** Load the gains from the R4 log and repeat R4 on the bench. Overshoot should match within 20 % or 30 rpm, whichever is larger. The dip and creep should be present with similar duration.
+2. **Fast hit on the limit.** Load the gains from the R4 log and repeat R4 on the bench. Overshoot should match within 20 % or 30 rpm, whichever is larger. The dip and creep should be present with similar duration. Do the same for each gear of D2 (road), at that gear's fitted inertia, with the same tolerances; the gear that hunts should hunt at a similar period.
 3. **Baling.** Replay the R6 profile with the R6 gains. Peak-to-peak rpm ripple and the shape of the integral trace should match within 25 %.
 4. **PTO step.** Replay R7 with the R7 gains. Recovery time should match within 25 %.
 
@@ -627,7 +632,7 @@ The Zombie's SDO server is node 3 on CAN1 (`sdo.SetNodeId(3)` in `stm32_vcu.cpp`
 
 ## 12. Open items and risks
 
-Seven assumptions needed checking and three risks need watching. None blocks M1 to M6. V1, V3 and V4 are settled.
+Nine assumptions needed checking and three risks need watching. None blocks M1 to M6. V1, V3 and V4 are settled.
 
 ### To verify
 
@@ -641,6 +646,7 @@ Seven assumptions needed checking and three risks need watching. None blocks M1 
 | V6 | The tractor can record raw 10 ms CAN frames. | Summarised telematics data cannot fit the model. | The telematics logger kept only about 15 % of frames in run mode (7 Nov logs). Ben has fixed it (10 Nov 2026, item I9) and will take new logs. Check them for gaps in the `0x4A1` counter. |
 | V7 | The bench Zombie reaches run mode with ignition, start, direction and brake inputs only. | Start conditions depend on the selected vehicle type. | Read the `Ready()` and `Start()` logic of the vehicle class in the tractor's parameter file. |
 | V8 | The tractor's `regenramp` is 100 %/10 ms (no regen ramp), as the harness assumes. | It sets how fast the governor can brake an overspeed. With the default of 1, the M4 overshoot is wrong by 190 rpm. | **Decided 11 Nov 2026:** Ben will set at least 5. The M4 bench log shows the bench Zombie at 13 or more (M5c finding 2). In the harness, values of 3 and above all behave the same, so the harness keeps 100. |
+| V9 | The inverter delivers the requested torque after a 30 ms lag, as the simulator models it. | Sets overshoot and hunting at no load. With the inverter's shortfall, the tractor's R4 was much milder than the harness's (18 % pedal: 3460 rpm against 4164). | **Open, found 13 Nov 2026** (`docs/tractor/R1R2R4_2026-11-13.md`, section 4). In fast no-load transients the tractor delivered and reported 40–70 % of the request, and about 0 Nm on small regen requests, always opposing the change in speed. At low steady torque it matches. The cause (inverter damping or rate limit) needs a continuous log of R4. |
 
 ### Risks
 

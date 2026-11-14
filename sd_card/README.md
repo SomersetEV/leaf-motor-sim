@@ -4,7 +4,7 @@ Copy `presets/` and `profiles/` to the root of a FAT32 microSD card for the T-CA
 
 ## Presets: `/presets/<name>.json`
 
-A preset is a flat JSON object of numbers. A file with the same name as a built-in preset (`noload`, `topper`, `baler`, `pto_step`) overrides that preset. Any key you leave out keeps the built-in value. A file with any other name starts from the default parameters with no loads.
+A preset is a flat JSON object of numbers. A file with the same name as a built-in preset (`noload`, `topper`, `baler`, `pto_step`, `default`) overrides that preset. Any key you leave out keeps the built-in value. A file with any other name starts from the default parameters with no loads.
 
 The console command `preset <name>` checks the SD card first, then the built-in presets.
 

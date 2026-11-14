@@ -19,7 +19,9 @@ the previous set left, since only speed below revlim/2 resets it.
 
 A set may also hold `sim:` model parameters for the simulator, such as
 `sim: {noise: 5}` for speed noise on 0x1DA. Presets reset the model, so they
-are applied again after every load change, and put back by preset noload.
+are applied again after every load change, and put back by preset default.
+That is the compiled defaults; noload is now the measured neutral shaft
+(J 0.055), which hunts at the tractor's gains.
 
 `repeats: N` runs every set N times. metrics.csv then has one row per run,
 and metrics_summary.csv the mean and standard deviation of each metric per
@@ -37,7 +39,7 @@ Example sweep.yaml:
     load: {preset: baler}          # or {profile: baler_r3}  (SD /profiles/)
     # A load can also run console commands after the preset (cmds) and ramp
     # the signed gradient torque along [seconds from load start, Nm] points:
-    #   load: {preset: noload, cmds: ["load noise 3 2"],
+    #   load: {preset: default, cmds: ["load noise 3 2"],
     #          grad: [[0, 20], [10, 20], [25, 60], [40, 60]]}
     settle_s: 8                    # no-load time before each run
     run_s: 30
@@ -227,7 +229,7 @@ def clear_load(con: Console, load: dict):
             con.cmd("profile stop")
         except SweepError:
             pass  # already finished
-    con.cmd("preset noload")
+    con.cmd("preset default")
 
 
 GRAD_STEP_S = 0.1            # gradient ramps are sent as 'load grad' this often
@@ -347,7 +349,7 @@ def run_sweep(s: dict, con: Console, out: Path, log=print) -> list[dict]:
         con.canlog = None
         if sim_names:
             try:
-                clear_load(con, load)  # preset noload puts the model back
+                clear_load(con, load)  # preset default puts the model back
             except SweepError as e:
                 log(f"WARNING: could not reset the model: {e}")
         for n, v in original.items():

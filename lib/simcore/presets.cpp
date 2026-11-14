@@ -8,14 +8,23 @@
 namespace simcore {
 
 const char *const BUILTIN_PRESET_NAMES[BUILTIN_PRESET_COUNT] = {
-    "noload", "topper", "baler", "pto_step"};
+    "noload", "topper", "baler", "pto_step", "default"};
+
+// noload: the tractor parked in neutral with the PTO out, fitted from the
+// 13 Nov 2026 R1/R2/R4 captures (docs/tractor/R1R2R4_2026-11-13.md).
+constexpr float NEUTRAL_J_KGM2 = 0.055f;
+constexpr float NEUTRAL_TC_NM = 4.8f;
+constexpr float NEUTRAL_B_NMS = 0.045f;
 
 static void set_name(Preset &p, const char *name) {
     strncpy(p.name, name, sizeof(p.name) - 1);
     p.name[sizeof(p.name) - 1] = '\0';
 }
 
-// Placeholder numbers (plan section 6): replace once tractor logs are fitted.
+// noload is measured; topper, baler and pto_step are placeholders (plan
+// section 6) built on the defaults until R3, R5-R7 are fitted. default is the
+// compiled defaults with no loads: what noload was before 14 Nov 2026, kept
+// so sweeps and scripts written against it still run the same model.
 bool builtin_preset(const char *name, const SimParams &base, Preset &out) {
     out = Preset{};
     out.params = base;
@@ -23,7 +32,11 @@ bool builtin_preset(const char *name, const SimParams &base, Preset &out) {
     set_name(out, name);
 
     if (strcmp(name, "noload") == 0) {
-        out.id = 1;  // base model, no loads
+        out.id = 1;  // neutral, PTO out, no loads
+        out.params.plant.j_kgm2 = NEUTRAL_J_KGM2;
+        out.params.plant.tc_nm = NEUTRAL_TC_NM;
+        out.params.plant.b_nms = NEUTRAL_B_NMS;
+        out.params.plant.c_nms2 = 0.0f;
     } else if (strcmp(name, "topper") == 0) {
         out.id = 2;  // blades: added inertia, quadratic drag, draft noise
         out.params.plant.j_kgm2 = 0.60f;
@@ -45,6 +58,8 @@ bool builtin_preset(const char *name, const SimParams &base, Preset &out) {
         out.loads.step_nm = 60.0f;
         out.loads.step_ramp_ms = 500.0f;
         out.loads.step_dj_kgm2 = 0.30f;
+    } else if (strcmp(name, "default") == 0) {
+        out.id = 5;  // compiled defaults, no loads
     } else {
         return false;
     }

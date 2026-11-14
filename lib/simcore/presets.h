@@ -1,8 +1,10 @@
 // Presets: a named set of model parameters and load components.
 // See docs/SIMULATOR_PLAN.md section 6, "Presets and profiles".
 //
-// Compiled-in presets noload, topper, baler and pto_step carry placeholder
-// numbers until the identification runs replace them. A file
+// Compiled-in presets: noload is the tractor in neutral with the PTO out,
+// fitted from tractor logs; topper, baler and pto_step carry placeholder
+// numbers until the identification runs replace them; default is the
+// compiled defaults with no loads. A file
 // /presets/<name>.json on the SD card overrides a compiled preset of the same
 // name, or defines a new one; keys it leaves out keep their compiled (or base)
 // values.
@@ -23,7 +25,7 @@ struct Preset {
 };
 
 constexpr uint8_t PRESET_ID_FILE = 200;  // a preset that exists only on SD
-constexpr int BUILTIN_PRESET_COUNT = 4;
+constexpr int BUILTIN_PRESET_COUNT = 5;
 extern const char *const BUILTIN_PRESET_NAMES[BUILTIN_PRESET_COUNT];
 
 // base: the default parameters (config.h) the presets are built on.

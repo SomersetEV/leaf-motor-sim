@@ -5,7 +5,7 @@
 baud: 921600
 steps:
   # 1. Telemetry: J=0.300 in stat and 0x4B1
-  - {at: 0.0,   cmd: "preset noload"}
+  - {at: 0.0,   cmd: "preset default"}
   - {at: 2.0,   cmd: "stat"}
   - {at: 3.0,   cmd: "params"}
   # 2. Step
@@ -25,7 +25,7 @@ steps:
   - {at: 90.0,  cmd: "preset pto_step"}
   - {at: 91.0,  cmd: "stat"}
   - {at: 100.0, cmd: "stat"}
-  - {at: 110.0, cmd: "preset noload"}
+  - {at: 110.0, cmd: "preset default"}
   # 5. Parameters, first half
   - {at: 120.0, cmd: "mark 4"}
   - {at: 121.0, cmd: "set J 0.5"}

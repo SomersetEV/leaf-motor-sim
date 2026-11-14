@@ -2,7 +2,7 @@
 #   python run_script.py scripts/baler_example.yaml --port COM7 --stream-out run.csv
 baud: 921600
 steps:
-  - {at: 0.0,  cmd: "preset noload"}
+  - {at: 0.0,  cmd: "preset default"}
   - {at: 0.2,  cmd: "stream 1 1"}
   - {at: 0.5,  cmd: "mark 1"}
   - {at: 10.0, cmd: "preset baler"}

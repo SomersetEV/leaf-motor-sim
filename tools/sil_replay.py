@@ -6,7 +6,7 @@ From the bench log it takes what the harness cannot know: the pedal
 model inertia (0x4B1). It starts the harness at rest at the first moment the
 bench shaft is also at rest with GovLog on, and drives it tick by tick with
 the same inputs. Load commands are not in the log, so the bench run must be
-at no load (preset noload, or the defaults), as the M4 pedal tests were.
+at no load (preset default, which was noload until 14 Nov 2026), as the M4 pedal tests were.
 
 It then finds every approach to revlim (the speed rising through 98 % of it
 from below half of it) and measures the ring that follows, in both runs, with
